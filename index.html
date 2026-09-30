@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>Hunting Game</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: #fff;
+    font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #view { position: fixed; inset: 0; }
+  #view canvas { display: block; width: 100%; height: 100%; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #hud .top { position: absolute; top: env(safe-area-inset-top, 0); left: 12px; right: 12px; padding-top: 8px;
+    display: flex; justify-content: space-between; font-size: 14px; text-shadow: 0 0 3px #000; }
+  #hud .cross { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; }
+  #hud .cross::before, #hud .cross::after { content: ""; position: absolute; background: #fff; opacity: .85; }
+  #hud .cross::before { left: 11px; top: 0; width: 2px; height: 24px; }
+  #hud .cross::after { top: 11px; left: 0; height: 2px; width: 24px; }
+  #hud .bottom { position: absolute; bottom: env(safe-area-inset-bottom, 0); left: 0; right: 0; padding: 0 12px 12px;
+    display: flex; justify-content: center; gap: 12px; }
+  #hud button { pointer-events: auto; background: rgba(0,0,0,.45); color: #fff; border: 1px solid rgba(255,255,255,.5);
+    border-radius: 8px; padding: 10px 16px; font-size: 14px; }
+  #start { position: fixed; inset: 0; background: #10201a; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 24px; z-index: 10; }
+  #start button { font-size: 20px; padding: 14px 28px; border-radius: 10px; border: 0; background: #4c9a5f; color: #fff; }
+  #start p { max-width: 320px; opacity: .8; font-size: 14px; margin: 0; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+<div id="hud"></div>
+<div id="start">
+  <h1>Hunting Game</h1>
+  <p>Hold the phone upright and look around. On desktop: drag to look, wheel to zoom, R to recalibrate.</p>
+  <button id="startBtn">Start</button>
+  <p id="startMsg"></p>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
