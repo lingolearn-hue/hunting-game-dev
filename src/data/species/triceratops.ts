@@ -6,6 +6,7 @@ export const TRICERATOPS: SpeciesDef = {
   viewRange: 55, closeRange: 15, detectRate: 0.18, awarenessDecay: 0.06,
   alertThreshold: 0.5, fleeDuration: [5, 8], reaction: 'stand',
   activity: [[5, 19]], habitat: 'valley',
+  health: 300,
   bounds: { halfLength: 3.7, halfWidth: 1.0, height: 2.9 },
   look: {
     stance: 'quad',

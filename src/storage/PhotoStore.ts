@@ -17,8 +17,20 @@ export interface PhotoRecord {
   breakdown: ScoreBreakdown | null;
 }
 
+export interface HuntRecord {
+  id?: number;
+  schema: number;
+  timestamp: number;
+  level: string;
+  species: string;
+  zone: string;
+  distance: number;
+  damage: number;
+  killed: boolean;
+}
+
 const DB_NAME = 'hunting-game';
-const DB_VERSION = 1; // schema version. Add migrations in onupgradeneeded when bumping.
+const DB_VERSION = 2; // v2: added 'hunts'. Add migrations in onupgradeneeded when bumping.
 export const RECORD_SCHEMA = 1;
 
 const req = <T>(r: IDBRequest<T>) =>
@@ -38,6 +50,7 @@ export class PhotoStore {
           const db = o.result;
           if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
           if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs');
+          if (!db.objectStoreNames.contains('hunts')) db.createObjectStore('hunts', { keyPath: 'id', autoIncrement: true });
         };
         o.onsuccess = () => res(o.result);
         o.onerror = () => rej(o.error);
@@ -73,5 +86,18 @@ export class PhotoStore {
     tx.objectStore('photos').delete(id);
     tx.objectStore('blobs').delete(id);
     await done(tx);
+  }
+
+  async addHunt(rec: HuntRecord): Promise<void> {
+    const db = await this.db();
+    const tx = db.transaction('hunts', 'readwrite');
+    tx.objectStore('hunts').add(rec);
+    await done(tx);
+  }
+
+  async listHunts(): Promise<HuntRecord[]> {
+    const db = await this.db();
+    const all = await req(db.transaction('hunts').objectStore('hunts').getAll()) as HuntRecord[];
+    return all.sort((a, b) => b.timestamp - a.timestamp);
   }
 }

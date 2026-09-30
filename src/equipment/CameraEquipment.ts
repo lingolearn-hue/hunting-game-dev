@@ -4,9 +4,13 @@ import { Equipment } from './Equipment';
 export class CameraEquipment implements Equipment {
   readonly id = 'camera_basic';
   readonly name = 'Basic camera';
+  readonly kind = 'camera' as const;
+  readonly minZoom = 1;
   readonly opticalZoomMax = 4;
   readonly digitalZoomMax = 2;   // multiplier on top of optical
   readonly shutterCooldownMs = 700;
+  readonly overlay = 'none' as const;
+  swayDeg = 0.12;
 
   get maxZoom(): number { return this.opticalZoomMax * this.digitalZoomMax; }
 

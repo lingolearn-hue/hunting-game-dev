@@ -1,4 +1,4 @@
-import { PhotoStore, PhotoRecord } from '../storage/PhotoStore';
+import { PhotoStore, PhotoRecord, HuntRecord } from '../storage/PhotoStore';
 import { SPECIES } from '../data/species';
 
 const fmtTime = (t: number) => {
@@ -16,9 +16,10 @@ export class Gallery {
     document.body.append(this.root);
   }
 
-  async open(): Promise<void> {
+  async open(tab: 'photos' | 'harvest' = 'photos'): Promise<void> {
     this.root.style.display = 'block';
-    this.root.replaceChildren(this.header('Photos'));
+    if (tab === 'harvest') { await this.harvest(); return; }
+    this.root.replaceChildren(this.header('Photos', 'HARVEST', () => { void this.open('harvest'); }));
     let list: PhotoRecord[];
     try {
       list = await this.store.list();
@@ -58,11 +59,32 @@ export class Gallery {
     return u;
   }
 
-  private header(title: string): HTMLElement {
+  private async harvest(): Promise<void> {
+    this.root.replaceChildren(this.header('Harvest', 'PHOTOS', () => { void this.open('photos'); }));
+    let list: HuntRecord[];
+    try { list = await this.store.listHunts(); } catch { this.root.append(this.text('Storage unavailable.')); return; }
+    if (list.length === 0) { this.root.append(this.text('No shots recorded yet.')); return; }
+    const kills = list.filter((h) => h.killed).length;
+    this.root.append(this.text(`${kills} harvested · ${list.length} hits`));
+    const ul = document.createElement('div');
+    ul.style.fontSize = '13px'; ul.style.lineHeight = '1.6';
+    for (const h of list) {
+      const row = document.createElement('div');
+      const name = SPECIES[h.species]?.name ?? h.species;
+      row.textContent = `${new Date(h.timestamp).toLocaleString()} · ${name} · ${h.zone} · ${h.distance} m · ${h.damage} dmg · ${h.killed ? 'harvested' : 'wounded'} · ${h.level}`;
+      ul.append(row);
+    }
+    this.root.append(ul);
+  }
+
+  private header(title: string, altLabel?: string, alt?: () => void): HTMLElement {
     const h = document.createElement('div'); h.className = 'ghead';
     const t = document.createElement('span'); t.textContent = title;
     const x = document.createElement('button'); x.textContent = 'CLOSE'; x.onclick = () => this.close();
-    h.append(t, x);
+    if (altLabel && alt) {
+      const a = document.createElement('button'); a.textContent = altLabel; a.onclick = alt;
+      h.append(t, a, x);
+    } else h.append(t, x);
     return h;
   }
 

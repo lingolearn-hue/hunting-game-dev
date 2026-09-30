@@ -6,6 +6,7 @@ export const DEER: SpeciesDef = {
   viewRange: 70, closeRange: 12, detectRate: 0.25, awarenessDecay: 0.06,
   alertThreshold: 0.4, fleeDuration: [6, 10], reaction: 'flee',
   activity: [[4.5, 10], [15.5, 21]], habitat: 'forest',
+  health: 100,
   bounds: { halfLength: 0.85, halfWidth: 0.25, height: 1.95 },
   look: {
     stance: 'quad',

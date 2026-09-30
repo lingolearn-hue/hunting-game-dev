@@ -6,6 +6,7 @@ export const PARASAUROLOPHUS: SpeciesDef = {
   viewRange: 75, closeRange: 15, detectRate: 0.25, awarenessDecay: 0.06,
   alertThreshold: 0.4, fleeDuration: [6, 10], reaction: 'flee',
   activity: [[5, 19]], habitat: 'valley',
+  health: 200,
   bounds: { halfLength: 3.7, halfWidth: 0.55, height: 3.6 },
   look: {
     stance: 'quad',

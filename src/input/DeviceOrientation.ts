@@ -52,6 +52,7 @@ export class DeviceOrientation {
     if (this.needCalibrate) {
       this.player.calibration = yawQuat(-yawOf(this.current));
       this.player.lookYaw = 0;
+      this.player.lookPitch = 0;
       this.needCalibrate = false;
     }
   }

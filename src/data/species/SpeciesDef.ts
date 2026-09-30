@@ -28,6 +28,7 @@ export interface SpeciesDef {
   reaction: Reaction;
   activity: Array<[number, number]>; // active hour windows
   habitat: string;
+  health: number;
   /** Approximate bounding box for scoring/visibility (m). */
   bounds: { halfLength: number; halfWidth: number; height: number };
   look: LookDef;

@@ -23,7 +23,7 @@ export interface ShotResult {
   breakdown: ScoreBreakdown | null;
 }
 
-const POSTURE: Record<Animal['state'], number> = { ALERT: 10, MOVING: 8, IDLE: 7, FORAGING: 5, FLEEING: 4 };
+const POSTURE: Record<Animal['state'], number> = { DEAD: 0, ALERT: 10, MOVING: 8, IDLE: 7, FORAGING: 5, FLEEING: 4 };
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const MAX_DIST = 150;
 
@@ -34,6 +34,7 @@ function lighting(hour: number): number {
 }
 
 function scoreAnimal(game: Game, a: Animal, aspect: number): { total: number; breakdown: ScoreBreakdown; dist: number } | null {
+  if (a.state === 'DEAD') return null;
   const p = game.player, cam = p.position;
   const dist = Math.hypot(a.position.x - cam.x, a.position.z - cam.z);
   if (dist > MAX_DIST) return null;

@@ -1,7 +1,7 @@
 /** Virtual joystick. Writes x (right) and y (forward) in [-1,1] to `out`. */
 export class Joystick {
-  constructor(root: HTMLElement, out: { x: number; y: number }) {
-    const base = document.createElement('div'); base.className = 'joy';
+  constructor(root: HTMLElement, out: { x: number; y: number }, side: 'left' | 'right') {
+    const base = document.createElement('div'); base.className = `joy ${side}`;
     const knob = document.createElement('div'); knob.className = 'knob';
     base.append(knob);
     root.append(base);

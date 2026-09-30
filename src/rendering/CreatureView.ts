@@ -29,11 +29,15 @@ export class CreatureView {
   private phase = Math.random() * 6.28;
   private stance: 'quad' | 'biped';
   private legLen: number;
+  private dead = 0;
+  private halfBody: number;
 
   constructor(animal: Animal) {
     const L = animal.species.look, C = L.colors, g = this.group;
     this.stance = L.stance;
     this.legLen = L.legLen;
+    this.halfBody = L.body[0] / 2;
+    this.group.rotation.order = 'YXZ';
     const [bw, bh, bl] = L.body, [hw, hh, hl] = L.head;
     const bodyCY = L.legLen + bh * 0.3;
 
@@ -113,7 +117,10 @@ export class CreatureView {
 
   update(a: Animal, dt: number): void {
     this.group.position.set(a.position.x, a.position.y, a.position.z);
-    this.group.rotation.y = a.direction;
+    // Death: roll onto the side.
+    this.dead += ((a.state === 'DEAD' ? 1 : 0) - this.dead) * Math.min(1, dt * 4);
+    this.group.rotation.set(0, a.direction, this.dead * (Math.PI / 2));
+    this.group.position.y += this.dead * this.halfBody;
 
     this.phase += a.speed * dt * 3.6 / (this.legLen + 0.35);
     const s = Math.sin(this.phase) * Math.min(0.7, a.speed * 0.3);

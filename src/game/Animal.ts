@@ -1,7 +1,7 @@
 import { SpeciesDef } from '../data/species/SpeciesDef';
 import { World, WORLD_SIZE } from './World';
 
-export type AnimalState = 'IDLE' | 'FORAGING' | 'MOVING' | 'ALERT' | 'FLEEING';
+export type AnimalState = 'IDLE' | 'FORAGING' | 'MOVING' | 'ALERT' | 'FLEEING' | 'DEAD';
 export interface Vec3 { x: number; y: number; z: number; }
 export interface AnimalContext {
   world: World;
@@ -25,7 +25,8 @@ export class Animal {
   speed = 0;                // m/s
   age: number;
   sex: 'M' | 'F';
-  health = 100;
+  health: number;
+  readonly maxHealth: number;
   awareness = 0;            // 0..1
   state: AnimalState = 'IDLE';
   activitySchedule: Array<[number, number]>;
@@ -38,6 +39,8 @@ export class Animal {
   constructor(readonly id: number, readonly species: SpeciesDef, x: number, z: number, world: World, rnd: () => number) {
     this.position = { x, y: world.heightAt(x, z), z };
     this.direction = rnd() * Math.PI * 2;
+    this.maxHealth = species.health;
+    this.health = species.health;
     this.age = 1 + Math.floor(rnd() * 10);
     this.sex = rnd() < 0.5 ? 'M' : 'F';
     this.activitySchedule = species.activity;
@@ -50,6 +53,11 @@ export class Animal {
   }
 
   update(dt: number, ctx: AnimalContext): void {
+    if (this.state === 'DEAD') {
+      this.speed = 0;
+      this.position.y = ctx.world.heightAt(this.position.x, this.position.z);
+      return;
+    }
     const p = ctx.player.position;
     const dx = p.x - this.position.x, dz = p.z - this.position.z;
     const dist = Math.hypot(dx, dz);
@@ -126,8 +134,24 @@ export class Animal {
           this.set('IDLE', 3 + ctx.rnd() * 3);
           return 0;
         }
-        return sp.runSpeed;
+        return sp.runSpeed * (this.health < this.maxHealth * 0.6 ? 0.65 : 1); // wounded: slower
+      case 'DEAD':
+        return 0;
     }
+  }
+
+  /** Applies damage. Returns true if killed. Survivors panic and flee from `from`. */
+  hit(damage: number, from: { x: number; z: number }, rnd: () => number): boolean {
+    this.health = Math.max(0, this.health - damage);
+    if (this.health <= 0) {
+      this.state = 'DEAD';
+      this.speed = 0;
+      return true;
+    }
+    this.awareness = 1;
+    this.fleeHeading = Math.atan2(from.x - this.position.x, from.z - this.position.z) + (rnd() - 0.5) * 0.8;
+    this.set('FLEEING', 8 + rnd() * 6);
+    return false;
   }
 
   private idleTime(ctx: AnimalContext): number {

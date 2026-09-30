@@ -35,6 +35,16 @@ export class AnimalManager {
     for (const a of this.list) a.update(dt, ctx);
   }
 
+  /** A loud noise (gunshot): close animals panic, distant ones become wary. */
+  noise(x: number, z: number): void {
+    for (const a of this.list) {
+      if (a.state === 'DEAD') continue;
+      const d = Math.hypot(a.position.x - x, a.position.z - z);
+      if (d < 60) a.awareness = 1;
+      else if (d < 150) a.awareness = Math.min(1, a.awareness + 0.5);
+    }
+  }
+
   nearest(x: number, z: number): { animal: Animal; dist: number } | null {
     let best: { animal: Animal; dist: number } | null = null;
     for (const a of this.list) {
