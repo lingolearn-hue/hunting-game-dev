@@ -1,11 +1,8 @@
 import { makeRng } from '../util/rng';
+import { LevelDef, Prop, PropKind } from '../data/environments/Level';
 
-export type PropKind = 'tree' | 'bush' | 'rock';
-export interface Prop { kind: PropKind; x: number; z: number; scale: number; rot: number; }
-
+export type { Prop, PropKind };
 export const WORLD_SIZE = 240; // meters
-const CLEARING_R = 9;
-const POND = { x: 18, z: -28, r: 9 };
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -15,32 +12,50 @@ const smooth = (a: number, b: number, x: number) => {
 /** Pure simulation data. No rendering dependencies. */
 export class World {
   readonly props: Prop[] = [];
-  readonly pond = POND;
+  readonly pond: LevelDef['pond'];
   readonly waterLevel = -0.35;
 
-  constructor(readonly seed = 1) {
-    const rnd = makeRng(seed);
+  constructor(readonly level: LevelDef) {
+    this.pond = level.pond;
+    const rnd = makeRng(level.seed);
     const half = WORLD_SIZE / 2 - 4;
-    const place = (kind: PropKind, n: number, minS: number, maxS: number, minDist: number) => {
+    for (const spec of level.props) {
       let placed = 0, tries = 0;
-      while (placed < n && tries++ < n * 20) {
+      while (placed < spec.count && tries++ < spec.count * 20) {
         const x = (rnd() * 2 - 1) * half, z = (rnd() * 2 - 1) * half;
-        if (Math.hypot(x, z) < minDist) continue;
-        if (Math.hypot(x - POND.x, z - POND.z) < POND.r + 1) continue;
-        this.props.push({ kind, x, z, scale: minS + rnd() * (maxS - minS), rot: rnd() * Math.PI * 2 });
+        if (Math.hypot(x, z) < spec.minDist) continue;
+        if (Math.hypot(x - this.pond.x, z - this.pond.z) < this.pond.r + 1) continue;
+        this.props.push({
+          kind: spec.kind, x, z, rot: rnd() * Math.PI * 2,
+          scale: spec.minScale + rnd() * (spec.maxScale - spec.minScale),
+        });
         placed++;
       }
-    };
-    place('tree', 700, 0.8, 1.6, CLEARING_R);
-    place('bush', 250, 0.6, 1.3, 4);
-    place('rock', 80, 0.5, 1.6, 4);
+    }
   }
 
+  get seed(): number { return this.level.seed; }
+
   heightAt(x: number, z: number): number {
-    const hills = 3.2 * Math.sin(x * 0.028 + 1.3) * Math.cos(z * 0.024) + 1.4 * Math.sin(x * 0.07 + z * 0.05);
+    const { hillAmp, hillFreq: f } = this.level.terrain;
+    const hills = hillAmp * (3.2 * Math.sin(x * 0.028 * f + 1.3) * Math.cos(z * 0.024 * f) + 1.4 * Math.sin((x * 0.07 + z * 0.05) * f));
     const mask = smooth(6, 28, Math.hypot(x, z));
-    const d = Math.hypot(x - POND.x, z - POND.z);
-    const pond = 2.6 * (1 - smooth(POND.r * 0.6, POND.r * 1.9, d));
+    const d = Math.hypot(x - this.pond.x, z - this.pond.z);
+    const pond = 2.6 * (1 - smooth(this.pond.r * 0.6, this.pond.r * 1.9, d));
     return hills * mask - pond;
+  }
+
+  /** True if a walker of radius r cannot stand at (x,z): world edge, deep water, trees, rocks. */
+  blocksWalker(x: number, z: number, r = 0.35): boolean {
+    const lim = WORLD_SIZE / 2 - 3;
+    if (Math.abs(x) > lim || Math.abs(z) > lim) return true;
+    if (this.heightAt(x, z) < this.waterLevel + 0.1) return true;
+    for (const p of this.props) {
+      if (p.kind === 'bush') continue; // passable
+      const rad = (p.kind === 'tree' ? 0.3 : 0.6) * p.scale + r;
+      const dx = p.x - x, dz = p.z - z;
+      if (dx * dx + dz * dz < rad * rad) return true;
+    }
+    return false;
   }
 }

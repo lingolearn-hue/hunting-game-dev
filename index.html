@@ -13,17 +13,43 @@
   #hud { position: fixed; inset: 0; pointer-events: none; }
   #hud .top { position: absolute; top: env(safe-area-inset-top, 0); left: 12px; right: 12px; padding-top: 8px;
     display: flex; justify-content: space-between; font-size: 14px; text-shadow: 0 0 3px #000; }
+  #hud .dbg { position: absolute; top: calc(env(safe-area-inset-top, 0) + 34px); left: 12px; font-size: 12px; opacity: .8; text-shadow: 0 0 3px #000; }
+  #hud .flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+  #hud .toast { position: absolute; top: 30%; left: 12px; right: 12px; text-align: center; font-size: 22px;
+    text-shadow: 0 0 4px #000; opacity: 0; transition: opacity .3s; }
+  #hud .toast small { display: block; font-size: 12px; opacity: .85; margin-top: 4px; }
+  #gallery { position: fixed; inset: 0; background: rgba(0,0,0,.94); z-index: 20; overflow: auto; display: none;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 16px; touch-action: pan-y; }
+  #gallery .ghead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+  #gallery button { background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.4);
+    border-radius: 8px; padding: 8px 14px; font-size: 14px; }
+  #gallery .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  #gallery .item { position: relative; aspect-ratio: 3 / 4; background: #222; }
+  #gallery .item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #gallery .badge { position: absolute; right: 4px; bottom: 4px; background: rgba(0,0,0,.65); border-radius: 6px;
+    padding: 2px 6px; font-size: 12px; }
+  #gallery img.big { width: 100%; max-height: 62vh; object-fit: contain; display: block; margin-bottom: 8px; }
   #hud .cross { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; }
   #hud .cross::before, #hud .cross::after { content: ""; position: absolute; background: #fff; opacity: .85; }
   #hud .cross::before { left: 11px; top: 0; width: 2px; height: 24px; }
   #hud .cross::after { top: 11px; left: 0; height: 2px; width: 24px; }
   #hud .bottom { position: absolute; bottom: env(safe-area-inset-bottom, 0); left: 0; right: 0; padding: 0 12px 12px;
-    display: flex; justify-content: center; gap: 12px; }
+    display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  #hud .bottom button { font-size: 12px; padding: 8px 10px; }
+  #hud .joy { position: absolute; left: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 64px); width: 110px; height: 110px;
+    border-radius: 50%; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.35);
+    pointer-events: auto; touch-action: none; }
+  #hud .knob { position: absolute; left: 33px; top: 33px; width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(255,255,255,.5); pointer-events: none; }
+  #hud .crouch { position: absolute; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+    width: 72px; height: 72px; border-radius: 50%; padding: 0; font-size: 12px; }
   #hud button { pointer-events: auto; background: rgba(0,0,0,.45); color: #fff; border: 1px solid rgba(255,255,255,.5);
     border-radius: 8px; padding: 10px 16px; font-size: 14px; }
   #start { position: fixed; inset: 0; background: #10201a; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 24px; z-index: 10; }
-  #start button { font-size: 20px; padding: 14px 28px; border-radius: 10px; border: 0; background: #4c9a5f; color: #fff; }
+  #start button { font-size: 18px; padding: 14px 28px; border-radius: 10px; border: 0; background: #4c9a5f; color: #fff; }
+  #levels { display: flex; flex-direction: column; gap: 10px; }
+  #levels small { display: block; font-size: 12px; opacity: .8; margin-top: 2px; }
   #start p { max-width: 320px; opacity: .8; font-size: 14px; margin: 0; }
 </style>
 </head>
@@ -32,8 +58,8 @@
 <div id="hud"></div>
 <div id="start">
   <h1>Hunting Game</h1>
-  <p>Hold the phone upright and look around. On desktop: drag to look, wheel to zoom, R to recalibrate.</p>
-  <button id="startBtn">Start</button>
+  <p>Hold the phone upright and look around. Left stick walks, CROUCH for stealth, tap to photograph. Desktop: drag to look, WASD to walk, C to crouch, wheel to zoom, click/Space to shoot, R to recalibrate.</p>
+  <div id="levels"></div>
   <p id="startMsg"></p>
 </div>
 <script type="module" src="/src/main.ts"></script>

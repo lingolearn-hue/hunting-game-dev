@@ -1,12 +1,21 @@
 import { Quat, QUAT_IDENTITY, multiply, yawQuat, pitchQuat } from '../util/quat';
 
-export const EYE_HEIGHT = 1.7;
+export const EYE_STAND = 1.7;
+export const EYE_CROUCH = 0.9;
+export const WALK_SPEED = 1.8;   // m/s
+export const CROUCH_SPEED = 0.9; // m/s
 export const ZOOM_MIN = 1;
 export const ZOOM_MAX = 8;
 
 export class Player {
-  position = { x: 0, y: 0, z: 0 }; // meters, Y up
+  position = { x: 0, y: 0, z: 0 }; // meters, Y up (y = eye position)
+  speed = 0;                       // actual ground speed, m/s
+  crouching = false;
+  eyeHeight = EYE_STAND;
+  /** Movement input: x = strafe right, y = forward, each in [-1,1]. Relative to view heading. */
+  move = { x: 0, y: 0 };
   zoom = 1;
+  maxZoom = ZOOM_MAX;
 
   /** Manual look (mouse / swipe fallback). */
   lookYaw = 0;
@@ -27,7 +36,7 @@ export class Player {
   }
 
   setZoom(z: number): void {
-    this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+    this.zoom = Math.max(ZOOM_MIN, Math.min(this.maxZoom, z));
   }
 
   updateOrientation(): void {

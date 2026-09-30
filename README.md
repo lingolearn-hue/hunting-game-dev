@@ -1,10 +1,12 @@
-Version: 2 — 2026-09-30
+Version: 5 — 2026-09-30
 
 # Hunting Game
 
-Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v02.md`.
+Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v03.md`.
 
-Status: Phase 1 (sensor prototype): Three.js forest, DeviceOrientation camera, desktop mouse fallback, no animals.
+Status: Phase 3 + movement + levels: walking/crouching, Forest (deer) and Dinosaur Valley (Parasaurolophus, Triceratops, Raptor, T-rex), tap-to-photograph, scoring, IndexedDB photos, gallery.
+
+Debug overlay: append `?debug` to the URL (nearest animal, state, awareness).
 
 ## Dev
 
@@ -14,5 +16,5 @@ Status: Phase 1 (sensor prototype): Three.js forest, DeviceOrientation camera, d
 
 ## Controls
 
-- Phone: rotate to look, pinch to zoom, CALIBRATE to reset heading.
-- Desktop: drag to look, wheel to zoom, R to recalibrate.
+- Phone: rotate to look, left stick to walk, CROUCH for stealth, pinch to zoom, tap to photograph, CALIBRATE to reset heading, GALLERY to view photos, LEVEL to return to level select.
+- Desktop: drag to look, WASD to walk, C to crouch, wheel to zoom, click or Space to photograph, R to recalibrate.

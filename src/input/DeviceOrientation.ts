@@ -11,7 +11,9 @@ export class DeviceOrientation {
   private current: Quat | null = null;
   private needCalibrate = false;
 
-  constructor(private player: Player) {}
+  private player: Player | null = null;
+
+  attach(player: Player): void { this.player = player; }
 
   /** Must be called from a user gesture (iOS). */
   async start(): Promise<boolean> {
@@ -41,7 +43,7 @@ export class DeviceOrientation {
   };
 
   update(dt: number): void {
-    if (!this.target) return;
+    if (!this.target || !this.player) return;
     if (!this.current) this.current = this.target;
     // More smoothing at high zoom (jitter is amplified by magnification).
     const rate = 30 / Math.sqrt(this.player.zoom);

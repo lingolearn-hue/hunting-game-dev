@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { Player } from '../game/Player';
+import { BASE_FOV_DEG } from '../game/view';
 
-const BASE_FOV = 70; // vertical degrees at 1x zoom
+const BASE_FOV = BASE_FOV_DEG;
 
 /** Virtual camera driven by the player state. Separate from CameraEquipment. */
 export class ViewCamera {
