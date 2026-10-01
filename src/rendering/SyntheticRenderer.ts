@@ -10,10 +10,12 @@ import { Rocket, Explosion } from '../game/Rocket';
 const TERRAIN_MARGIN = 120;
 
 export class SyntheticRenderer implements Renderer {
-  private gl!: THREE.WebGLRenderer;
+  protected gl!: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private view = new ViewCamera();
-  private container!: HTMLElement;
+  protected container!: HTMLElement;
+  /** AR mode: transparent canvas, only animals/rockets/explosions are rendered (no terrain, sky or fog). */
+  protected arMode = false;
   private views = new Map<number, CreatureView>();
   private rocketViews = new Map<number, { g: THREE.Group; trail: THREE.Line }>();
   private blastViews = new Map<Explosion, THREE.Mesh>();
@@ -30,26 +32,31 @@ export class SyntheticRenderer implements Renderer {
 
   init(container: HTMLElement, game: Game): void {
     this.container = container;
-    this.gl = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+    this.gl = new THREE.WebGLRenderer({ antialias: false, alpha: this.arMode, powerPreference: 'high-performance' });
+    if (this.arMode) this.gl.setClearColor(0x000000, 0);
     this.gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(this.gl.domElement);
 
     const P = (this.palette = game.level.palette);
-    const sky = new THREE.Color(P.sky);
-    this.scene.background = sky;
-    this.scene.fog = new THREE.Fog(sky, P.fogNear, P.fogFar);
+    if (!this.arMode) {
+      const sky = new THREE.Color(P.sky);
+      this.scene.background = sky;
+      this.scene.fog = new THREE.Fog(sky, P.fogNear, P.fogFar);
+    }
     this.sun.color.setHex(P.sun); this.sun.intensity = P.sunIntensity;
     this.hemi.color.setHex(P.hemiSky); this.hemi.groundColor.setHex(P.hemiGround);
     this.scene.add(this.hemi, this.sun, this.moon);
     this.sun.position.set(60, 90, 30);
 
-    this.applySky(game.sim.timeOfDay);
-    this.buildTerrain(game);
-    this.buildWater(game);
-    this.buildProps(game);
-    this.blood = new THREE.InstancedMesh(new THREE.CircleGeometry(0.22, 8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x6a0f0f }), 400);
-    this.blood.count = 0; this.blood.frustumCulled = false;
-    this.scene.add(this.blood);
+    if (!this.arMode) {
+      this.applySky(game.sim.timeOfDay);
+      this.buildTerrain(game);
+      this.buildWater(game);
+      this.buildProps(game);
+      this.blood = new THREE.InstancedMesh(new THREE.CircleGeometry(0.22, 8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x6a0f0f }), 400);
+      this.blood.count = 0; this.blood.frustumCulled = false;
+      this.scene.add(this.blood);
+    }
     this.resize();
   }
 
@@ -63,7 +70,7 @@ export class SyntheticRenderer implements Renderer {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
-    const cull = (this.scene.fog as THREE.Fog).far + 5;
+    const cull = this.scene.fog ? (this.scene.fog as THREE.Fog).far + 5 : 400;
     for (const a of game.sim.animals.list) {
       let v = this.views.get(a.id);
       if (!v) { v = new CreatureView(a); this.scene.add(v.group); this.views.set(a.id, v); }
@@ -73,8 +80,7 @@ export class SyntheticRenderer implements Renderer {
       if (near) v.update(a, dt);
     }
     this.syncEffects(game);
-    this.syncBlood(game);
-    this.applySky(game.sim.timeOfDay);
+    if (!this.arMode) { this.syncBlood(game); this.applySky(game.sim.timeOfDay); }
     this.view.update(game.player);
     this.gl.render(this.scene, this.view.camera);
   }

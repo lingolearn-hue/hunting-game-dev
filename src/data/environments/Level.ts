@@ -33,6 +33,10 @@ export interface LevelDef {
   extraEquipment?: Array<'launcher'>;
   /** Base wind speed (m/s). Default 3. */
   windSpeed?: number;
+  /** 'ar': camera background, only animals are rendered (no terrain/sky). Default synthetic. */
+  renderer?: 'synthetic' | 'ar';
+  /** AR: patrol flyers stay between these elevation angles (deg) above the player's horizon. */
+  elevation?: [number, number];
   palette: Palette;
   spawns: SpawnSpec[];
 }

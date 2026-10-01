@@ -1,12 +1,10 @@
 import * as THREE from 'three';
 import { Player } from '../game/Player';
-import { BASE_FOV_DEG } from '../game/view';
-
-const BASE_FOV = BASE_FOV_DEG;
+import { BASE_FOV_DEG, getBaseFov } from '../game/view';
 
 /** Virtual camera driven by the player state. Separate from CameraEquipment. */
 export class ViewCamera {
-  readonly camera = new THREE.PerspectiveCamera(BASE_FOV, 1, 0.1, 400);
+  readonly camera = new THREE.PerspectiveCamera(BASE_FOV_DEG, 1, 0.1, 400);
 
   setAspect(a: number): void {
     this.camera.aspect = a;
@@ -17,7 +15,7 @@ export class ViewCamera {
     const c = this.camera;
     c.position.set(p.position.x, p.position.y, p.position.z);
     c.quaternion.set(...p.orientation);
-    const fov = 2 * Math.atan(Math.tan((BASE_FOV * Math.PI) / 360) / p.zoom) * (180 / Math.PI);
+    const fov = 2 * Math.atan(Math.tan((getBaseFov() * Math.PI) / 360) / p.zoom) * (180 / Math.PI);
     if (Math.abs(c.fov - fov) > 0.001) { c.fov = fov; c.updateProjectionMatrix(); }
   }
 }

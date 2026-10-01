@@ -5,6 +5,8 @@ import { EquipId } from './game/Game';
 import { LEVELS } from './data/environments';
 import { LevelDef } from './data/environments/Level';
 import { SyntheticRenderer } from './rendering/SyntheticRenderer';
+import { ARRenderer } from './rendering/ARRenderer';
+import { CameraBackground } from './rendering/CameraBackground';
 import { DeviceOrientation } from './input/DeviceOrientation';
 import { attachDesktopInput } from './input/DesktopInput';
 import { attachTouchInput } from './input/TouchInput';
@@ -22,6 +24,7 @@ import { SPECIES } from './data/species';
 import { PhotoStore, PhotoRecord, RECORD_SCHEMA } from './storage/PhotoStore';
 
 const device = new DeviceOrientation();
+const camBg = new CameraBackground();
 const store = new PhotoStore();
 const gallery = new Gallery(store);
 const audio = new AudioEngine();
@@ -40,9 +43,10 @@ const toggleFullscreen = () => {
   } catch { /* unsupported (e.g. iOS Safari) */ }
 };
 
-function begin(level: LevelDef): void {
+function begin(level: LevelDef, cameraOk = true): void {
+  const ar = level.renderer === 'ar';
   const game = new Game(level);
-  const renderer = new SyntheticRenderer();
+  const renderer = ar ? new ARRenderer(camBg) : new SyntheticRenderer();
   device.attach(game.player);
   game.onCalibrate = () => device.calibrate();
   renderer.init(view, game);
@@ -64,7 +68,7 @@ function begin(level: LevelDef): void {
     trigger: () => act(),
     zoomIn: () => zoomBy(1.25),
     zoomOut: () => zoomBy(1 / 1.25),
-  }, { equipment: equipList });
+  }, { equipment: equipList, ar });
   const speeds: Array<[number, string]> = [[1 / 60, 'TIME: NORMAL'], [4 / 60, 'TIME: FAST'], [0, 'TIME: PAUSED']];
   let speedIdx = 0;
   const menu = new Menu([
@@ -83,11 +87,23 @@ function begin(level: LevelDef): void {
       label: 'PREDATORS: ON', keepOpen: true,
       fn: (b) => { game.player.safe = !game.player.safe; b.textContent = game.player.safe ? 'PREDATORS: OFF' : 'PREDATORS: ON'; },
     },
+    ...(ar ? [{
+      label: `AR FOV: ${camBg.fovLong}°`, keepOpen: true,
+      fn: (b: HTMLButtonElement) => {
+        camBg.fovLong = camBg.fovLong >= 80 ? 50 : camBg.fovLong + 5; // calibration: match drones to the real view
+        b.textContent = `AR FOV: ${camBg.fovLong}°`;
+        (renderer as ARRenderer).applyFov();
+      },
+    }] : []),
     { label: 'FULLSCREEN', fn: toggleFullscreen },
     { label: 'LEVEL SELECT', fn: () => location.reload() },
   ]);
-  new Joystick(hudRoot, moveInput.joy, 'left');
-  new Joystick(hudRoot, lookInput.joy, 'right');
+  if (!ar) { // in AR the phone is the view: no walking, and a look stick would break the registration with the camera image
+    new Joystick(hudRoot, moveInput.joy, 'left');
+    new Joystick(hudRoot, lookInput.joy, 'right');
+  } else if (!cameraOk) {
+    hud.toast('Camera unavailable', 'allow camera access (HTTPS) to see the real view');
+  }
 
   window.addEventListener('keydown', (e) => {
     const key: Record<string, EquipId> = { Digit1: 'binoculars', Digit2: 'camera', Digit3: 'rifle', Digit4: 'launcher' };
@@ -274,10 +290,12 @@ for (const level of Object.values(LEVELS)) {
   b.addEventListener('click', async () => {
     // Sensor permission and audio unlock must run directly inside this click handler (iOS).
     audio.unlock();
+    const camP = level.renderer === 'ar' ? camBg.start() : null; // camera permission must also start inside the click
     const ok = await device.start();
+    const camOk = camP ? await camP : true;
     if (!ok) msg.textContent = 'No motion sensor access. Using mouse/touch look.';
     start.remove();
-    begin(level);
+    begin(level, camOk);
     if (ok) toggleFullscreen();
   });
   levelsEl.append(b);

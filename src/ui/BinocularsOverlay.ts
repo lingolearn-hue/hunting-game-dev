@@ -1,4 +1,4 @@
-import { BASE_FOV_DEG } from '../game/view';
+import { vFovRad } from '../game/view';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = <K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>) => {
@@ -26,7 +26,7 @@ export class BinocularsOverlay {
 
   update(zoom: number, distText: string): void {
     const w = window.innerWidth, h = window.innerHeight;
-    const key = `${w}x${h}@${zoom.toFixed(2)}`;
+    const key = `${w}x${h}@${zoom.toFixed(2)}@${vFovRad(1).toFixed(3)}`;
     if (key !== this.key) { this.key = key; this.build(w, h, zoom); }
     this.readout.textContent = distText;
   }
@@ -48,7 +48,7 @@ export class BinocularsOverlay {
     for (const x of [cx - d, cx + d]) s.append(el('circle', { cx: x, cy, r, fill: 'none', stroke: 'rgba(255,255,255,.4)', 'stroke-width': 1.5 }));
 
     // Ranging rails: 5 mrad per tick, longer every 10 mrad
-    const vfov = 2 * Math.atan(Math.tan((BASE_FOV_DEG * Math.PI) / 360) / zoom);
+    const vfov = vFovRad(zoom);
     const pxPerMrad = (h / 2 / Math.tan(vfov / 2)) / 1000;
     const stroke = { stroke: 'rgba(255,255,255,.9)', 'stroke-width': 1.2, fill: 'none' };
     const rails = el('g', {});

@@ -46,7 +46,7 @@ export class AnimalManager {
   update(dt: number, player: AnimalContext['player'], hour: number, wind: AnimalContext['wind']): void {
     const ctx: AnimalContext = {
       world: this.world, player, hour, rnd: this.rnd, events: this.events, wind,
-      attacks: this.attacks, bleedDeaths: this.bleedDeaths,
+      attacks: this.attacks, bleedDeaths: this.bleedDeaths, elevation: this.world.level.elevation,
       dropBlood: (x, z) => { this.blood.push({ x, z }); if (this.blood.length > 400) this.blood.shift(); this.bloodVersion++; },
     };
     for (const a of this.list) a.update(dt, ctx);

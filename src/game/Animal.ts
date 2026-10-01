@@ -15,6 +15,8 @@ export interface AnimalContext {
   bleedDeaths: Animal[];               // wounded animals that bled out
   dropBlood: (x: number, z: number) => void;
   wind: { x: number; z: number; speed: number };
+  /** AR: patrol flyers stay within these elevation angles (deg) above the player's eye level. */
+  elevation?: [number, number];
 }
 
 const LIMIT = WORLD_SIZE / 2 - 6;
@@ -54,6 +56,7 @@ export class Animal {
   private windingUp = false;
   private bleed = 0;          // HP lost per second while wounded
   private bleedDist = 0;
+  private rerouteT = 0;
   private losT = 0;
   private hasLos = true;
   private nextCall: number;
@@ -84,6 +87,11 @@ export class Animal {
     }
     if (fl?.kind === 'patrol') { // patrol flyers start airborne
       this.patrolAlt = fl.cruiseAlt[0] + rnd() * (fl.cruiseAlt[1] - fl.cruiseAlt[0]);
+      const el = world.level.elevation;
+      if (el) { // AR: keep within the elevation window (player assumed at the origin)
+        const d = Math.hypot(x, z), rad = Math.PI / 180;
+        this.patrolAlt = clamp(this.patrolAlt, d * Math.tan(el[0] * rad) + 1.7, d * Math.tan(el[1] * rad) + 1.7);
+      }
       this.altitude = this.patrolAlt;
     }
     this.position.y = this.groundY(world) + this.altitude;
@@ -131,6 +139,15 @@ export class Animal {
     this.speed += clamp(desired - this.speed, -accel * dt, accel * dt);
     this.move(dt, ctx);
     this.updateAltitude(dt);
+    if (ctx.elevation && this.species.flight?.kind === 'patrol') {
+      // AR: do not fly right over the player; pick a new waypoint when too close.
+      this.rerouteT -= dt;
+      if (dist < 20 && this.rerouteT <= 0 && this.state === 'MOVING') { this.pickWaypoint(ctx); this.rerouteT = 3; }
+      // Never below the horizon line (or too steeply overhead) as seen from the player.
+      const rad = Math.PI / 180, base = ctx.player.position.y - this.groundY(ctx.world);
+      const lo = dist * Math.tan(ctx.elevation[0] * rad) + base, hi = dist * Math.tan(ctx.elevation[1] * rad) + base;
+      this.altitude = clamp(this.altitude, lo, Math.max(lo + 1, hi));
+    }
     this.position.x = clamp(this.position.x, -LIMIT, LIMIT);
     this.position.z = clamp(this.position.z, -LIMIT, LIMIT);
     this.position.y = this.groundY(ctx.world) + this.altitude;
@@ -411,6 +428,19 @@ export class Animal {
   /** Patrol flyers: fly to a new waypoint at a new altitude. */
   private pickWaypoint(ctx: AnimalContext): void {
     const fl = this.species.flight!;
+    if (ctx.elevation) { // AR: waypoints around the player, at an elevation angle inside the window
+      const p = ctx.player.position, rad = Math.PI / 180, el = ctx.elevation;
+      // When close to the player, head outward instead of across.
+      const here = Math.hypot(this.position.x - p.x, this.position.z - p.z);
+      const out = Math.atan2(this.position.z - p.z, this.position.x - p.x);
+      const a = here < 45 ? out + (ctx.rnd() - 0.5) * 0.8 : ctx.rnd() * Math.PI * 2, d = 40 + ctx.rnd() * 70;
+      const x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+      const elev = (el[0] + 3 + ctx.rnd() * Math.max(1, el[1] - el[0] - 10)) * rad;
+      this.patrolAlt = d * Math.tan(elev) + (p.y - ctx.world.heightAt(x, z));
+      this.target = { x, z };
+      this.set('MOVING', 60);
+      return;
+    }
     for (let i = 0; i < 10; i++) {
       const a = ctx.rnd() * Math.PI * 2, d = 30 + ctx.rnd() * 90;
       const x = this.position.x + Math.cos(a) * d, z = this.position.z + Math.sin(a) * d;

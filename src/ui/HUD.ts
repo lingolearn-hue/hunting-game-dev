@@ -37,7 +37,7 @@ export class HUD {
       equip: (id: EquipId) => void; menu: () => void; crouch: () => void; trigger: () => void;
       zoomIn: () => void; zoomOut: () => void;
     },
-    opts: { equipment: EquipId[] },
+    opts: { equipment: EquipId[]; ar?: boolean },
   ) {
     const top = document.createElement('div'); top.className = 'top';
     const wind = document.createElement('span');
@@ -63,6 +63,7 @@ export class HUD {
 
     this.crouchBtn.className = 'crouch';
     this.crouchBtn.onclick = actions.crouch;
+    if (opts.ar) this.crouchBtn.style.display = 'none'; // the phone is the view in AR: no walking
     this.triggerBtn.className = 'trigger';
     this.triggerBtn.onpointerdown = (e) => { e.preventDefault(); actions.trigger(); };
     const zoom = document.createElement('div'); zoom.className = 'zoomcol';
@@ -109,7 +110,7 @@ export class HUD {
       : cur.kind === 'launcher' ? ` · ${g.launcher.reloading ? 'reloading' : `${g.launcher.ammo}/${g.launcher.magazine}`}` : '';
     this.time.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${LABEL[cur.kind]}${ammo}`;
 
-    this.crouchBtn.textContent = g.player.crouching ? 'STAND' : 'CROUCH';
+    if (this.crouchBtn.style.display !== 'none') this.crouchBtn.textContent = g.player.crouching ? 'STAND' : 'CROUCH';
     this.triggerBtn.textContent = cur.kind === 'weapon' ? 'FIRE' : cur.kind === 'launcher' ? 'LAUNCH' : 'PHOTO';
     this.triggerBtn.style.display = cur.kind === 'binoculars' ? 'none' : '';
     const isBino = cur.overlay === 'binoculars';

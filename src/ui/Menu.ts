@@ -12,16 +12,18 @@ export class Menu {
 
   constructor(items: MenuItem[]) {
     this.root.id = 'menu';
+    const grid = document.createElement('div'); grid.className = 'menuGrid';
+    this.root.append(grid);
     for (const it of items) {
       const b = document.createElement('button');
       b.textContent = it.label;
       b.onclick = () => { if (!it.keepOpen) this.close(); it.fn(b); };
-      this.root.append(b);
+      grid.append(b);
     }
     const c = document.createElement('button');
     c.textContent = 'CLOSE';
     c.onclick = () => this.close();
-    this.root.append(c);
+    grid.append(c);
     document.body.append(this.root);
   }
 

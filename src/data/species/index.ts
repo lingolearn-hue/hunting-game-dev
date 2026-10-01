@@ -18,11 +18,13 @@ import { SCOUTDRONE } from './scoutdrone';
 import { HEAVYDRONE } from './heavydrone';
 import { ROVER } from './rover';
 import { UGV } from './ugv';
+import { ARSCOUT } from './arscout';
+import { ARHEAVY } from './arheavy';
 
 const ALL: SpeciesDef[] = [
   DEER, ELK, BOAR, FOX, RABBIT, BEAR, HAWK, CROW, DUCK,
   PARASAUROLOPHUS, TRICERATOPS, RAPTOR, TREX, PTERANODON, ARCHAEOPTERYX,
-  SCOUTDRONE, HEAVYDRONE, ROVER, UGV,
+  SCOUTDRONE, HEAVYDRONE, ROVER, UGV, ARSCOUT, ARHEAVY,
 ];
 
 export const SPECIES: Record<string, SpeciesDef> = Object.fromEntries(ALL.map((s) => [s.id, s]));
