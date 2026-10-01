@@ -2,7 +2,7 @@ import { makeRng } from '../util/rng';
 import { LevelDef, Prop, PropKind } from '../data/environments/Level';
 
 export type { Prop, PropKind };
-export const WORLD_SIZE = 240; // meters
+export const WORLD_SIZE = 480; // playable area, meters
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -42,7 +42,22 @@ export class World {
     const mask = smooth(6, 28, Math.hypot(x, z));
     const d = Math.hypot(x - this.pond.x, z - this.pond.z);
     const pond = 2.6 * (1 - smooth(this.pond.r * 0.6, this.pond.r * 1.9, d));
-    return hills * mask - pond;
+    // Dry ground never dips into water-level basins (only the pond holds water).
+    const floor = this.waterLevel + 0.5;
+    return Math.max(hills * mask, floor) - pond;
+  }
+
+  /** Collision radius of a prop (0 = passable). */
+  radiusOf(p: Prop): number {
+    if (p.kind === 'tree') return (this.level.treeStyle === 'container' ? 1.6 : 0.3) * p.scale;
+    if (p.kind === 'rock') return 0.6 * p.scale;
+    return 0;
+  }
+
+  /** Within `m` meters of the playable edge. */
+  nearEdge(x: number, z: number, m: number): boolean {
+    const lim = WORLD_SIZE / 2 - 3 - m;
+    return Math.abs(x) > lim || Math.abs(z) > lim;
   }
 
   /** True if a walker of radius r cannot stand at (x,z): world edge, deep water, trees, rocks. */
@@ -51,8 +66,9 @@ export class World {
     if (Math.abs(x) > lim || Math.abs(z) > lim) return true;
     if (this.heightAt(x, z) < this.waterLevel + 0.1) return true;
     for (const p of this.props) {
-      if (p.kind === 'bush') continue; // passable
-      const rad = (p.kind === 'tree' ? 0.3 : 0.6) * p.scale + r;
+      const pr = this.radiusOf(p);
+      if (pr === 0) continue; // passable (bushes)
+      const rad = pr + r;
       const dx = p.x - x, dz = p.z - z;
       if (dx * dx + dz * dz < rad * rad) return true;
     }

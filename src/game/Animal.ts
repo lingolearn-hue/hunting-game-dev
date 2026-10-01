@@ -3,14 +3,17 @@ import { World, WORLD_SIZE } from './World';
 
 export type AnimalState = 'IDLE' | 'FORAGING' | 'MOVING' | 'ALERT' | 'FLEEING' | 'DEAD';
 export interface Vec3 { x: number; y: number; z: number; }
+export interface CallEvent { species: SpeciesDef; x: number; y: number; z: number; }
 export interface AnimalContext {
   world: World;
   player: { position: Vec3; speed: number; crouching: boolean };
   hour: number;
   rnd: () => number;
+  events: CallEvent[];
 }
 
 const LIMIT = WORLD_SIZE / 2 - 6;
+const WANDER = WORLD_SIZE * 0.4; // animals stay within this radius of the center (unless already outside)
 const wrap = (a: number) => {
   while (a > Math.PI) a -= 2 * Math.PI;
   while (a < -Math.PI) a += 2 * Math.PI;
@@ -18,11 +21,15 @@ const wrap = (a: number) => {
 };
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-/** Simulation entity. No rendering dependencies. Heading convention: forward = (-sin h, -cos h). */
+/**
+ * Simulation entity. No rendering dependencies. Heading convention: forward = (-sin h, -cos h).
+ * position.y is the underside of the animal (ground + altitude for flyers).
+ */
 export class Animal {
   position: Vec3;
   direction: number;        // heading (yaw, rad)
   speed = 0;                // m/s
+  altitude = 0;             // m above ground (flyers)
   age: number;
   sex: 'M' | 'F';
   health: number;
@@ -35,9 +42,13 @@ export class Animal {
   private timer = 2;
   private target: { x: number; z: number } | null = null;
   private fleeHeading = 0;
+  private vy = 0;           // fall speed of dead flyers
+  private patrolAlt = 0;
+  private nextCall: number;
+  private soar: { cx: number; cz: number; r: number; phase: number; base: number; t: number } | null = null;
 
   constructor(readonly id: number, readonly species: SpeciesDef, x: number, z: number, world: World, rnd: () => number) {
-    this.position = { x, y: world.heightAt(x, z), z };
+    this.position = { x, y: 0, z };
     this.direction = rnd() * Math.PI * 2;
     this.maxHealth = species.health;
     this.health = species.health;
@@ -46,18 +57,52 @@ export class Animal {
     this.activitySchedule = species.activity;
     this.habitat = species.habitat;
     this.timer = 1 + rnd() * 4;
+    this.nextCall = species.call ? rnd() * species.call.interval[1] : Infinity;
+
+    const fl = species.flight;
+    if (fl?.kind === 'soar') {
+      this.soar = {
+        cx: clamp(x, -(LIMIT - (fl.radius ?? 30)), LIMIT - (fl.radius ?? 30)),
+        cz: clamp(z, -(LIMIT - (fl.radius ?? 30)), LIMIT - (fl.radius ?? 30)),
+        r: fl.radius ?? 30, phase: rnd() * Math.PI * 2, t: rnd() * 10,
+        base: fl.cruiseAlt[0] + rnd() * (fl.cruiseAlt[1] - fl.cruiseAlt[0]),
+      };
+      this.altitude = this.soar.base;
+      this.placeOnOrbit();
+    }
+    if (fl?.kind === 'patrol') { // patrol flyers start airborne
+      this.patrolAlt = fl.cruiseAlt[0] + rnd() * (fl.cruiseAlt[1] - fl.cruiseAlt[0]);
+      this.altitude = this.patrolAlt;
+    }
+    this.position.y = this.groundY(world) + this.altitude;
   }
+
+  get flying(): boolean { return this.altitude > 0.3; }
 
   activityAt(hour: number): number {
     return this.activitySchedule.some(([a, b]) => hour >= a && hour < b) ? 1 : 0.4;
   }
 
+  private groundY(world: World): number {
+    const g = world.heightAt(this.position.x, this.position.z);
+    return this.species.flight ? Math.max(g, world.waterLevel) : g;
+  }
+
   update(dt: number, ctx: AnimalContext): void {
     if (this.state === 'DEAD') {
+      if (this.altitude > 0) { // dead flyers fall
+        this.vy += 9.8 * dt;
+        this.altitude = Math.max(0, this.altitude - this.vy * dt);
+        if (this.altitude === 0) this.vy = 0;
+      }
       this.speed = 0;
-      this.position.y = ctx.world.heightAt(this.position.x, this.position.z);
+      this.position.y = this.groundY(ctx.world) + this.altitude;
       return;
     }
+    this.callTimer(dt, ctx);
+    if (this.soar) { this.updateSoar(dt, ctx); return; }
+
+
     const p = ctx.player.position;
     const dx = p.x - this.position.x, dz = p.z - this.position.z;
     const dist = Math.hypot(dx, dz);
@@ -66,10 +111,61 @@ export class Animal {
     const accel = this.state === 'FLEEING' ? 15 : 6;
     this.speed += clamp(desired - this.speed, -accel * dt, accel * dt);
     this.move(dt, ctx);
-    this.position.y = ctx.world.heightAt(this.position.x, this.position.z);
+    this.updateAltitude(dt);
+    this.position.x = clamp(this.position.x, -LIMIT, LIMIT);
+    this.position.z = clamp(this.position.z, -LIMIT, LIMIT);
+    this.position.y = this.groundY(ctx.world) + this.altitude;
   }
 
-  /** Simple detection: distance, close range, player movement. (Visibility/wind/noise later.) */
+  /** Emits an occasional call (heard by the audio system). */
+  private callTimer(dt: number, ctx: AnimalContext): void {
+    const c = this.species.call;
+    if (!c) return;
+    this.nextCall -= dt;
+    if (this.nextCall > 0) return;
+    this.nextCall = c.interval[0] + ctx.rnd() * (c.interval[1] - c.interval[0]);
+    // Off-hours animals are mostly quiet.
+    if (this.activityAt(ctx.hour) < 1 && ctx.rnd() < 0.7) return;
+    if (ctx.events.length < 60) ctx.events.push({ species: this.species, x: this.position.x, y: this.position.y, z: this.position.z });
+  }
+
+  private placeOnOrbit(): void {
+    const s = this.soar!;
+    this.position.x = s.cx + Math.cos(s.phase) * s.r;
+    this.position.z = s.cz + Math.sin(s.phase) * s.r;
+    this.direction = Math.atan2(Math.sin(s.phase), -Math.cos(s.phase)); // tangent of the orbit
+  }
+
+  /** Soaring flyers circle at altitude and ignore the player. */
+  private updateSoar(dt: number, ctx: AnimalContext): void {
+    const s = this.soar!, v = this.species.walkSpeed;
+    s.t += dt;
+    s.phase += (v / s.r) * dt;
+    this.placeOnOrbit();
+    this.speed = v;
+    this.state = 'MOVING';
+    this.altitude = s.base + 4 * Math.sin(s.t * 0.4);
+    this.position.y = this.groundY(ctx.world) + this.altitude;
+  }
+
+  private updateAltitude(dt: number): void {
+    const fl = this.species.flight;
+    if (!fl) return;
+    let target = 0;
+    if (fl.kind === 'patrol') {
+      target = this.state === 'FLEEING' ? fl.cruiseAlt[1] : this.patrolAlt;
+    } else if (this.state === 'FLEEING') {
+      target = fl.cruiseAlt[1];
+    } else if (this.state === 'MOVING' && this.target) {
+      const d = Math.hypot(this.target.x - this.position.x, this.target.z - this.position.z);
+      const cruise = fl.cruiseAlt[0] + (fl.cruiseAlt[1] - fl.cruiseAlt[0]) * 0.5;
+      target = Math.min(cruise, d / 3); // glide slope for landing
+    }
+    const rate = this.state === 'FLEEING' ? 9 : 5;
+    this.altitude += clamp(target - this.altitude, -rate * dt, rate * dt);
+  }
+
+  /** Simple detection: distance, close range, player movement. (Visibility/wind later.) */
   private updateAwareness(dt: number, dist: number, playerSpeed: number, crouching: boolean): void {
     const sp = this.species;
     let rate = 0;
@@ -128,9 +224,15 @@ export class Animal {
         this.direction += clamp(wrap(towardPlayer - this.direction), -4 * dt, 4 * dt);
         return 0;
       case 'FLEEING':
+        // Near the area edge: turn back toward the center.
+        if (Math.abs(this.position.x) > LIMIT - 14 || Math.abs(this.position.z) > LIMIT - 14) {
+          this.fleeHeading = Math.atan2(this.position.x, this.position.z);
+        }
         this.direction += clamp(wrap(this.fleeHeading - this.direction), -6 * dt, 6 * dt);
         if (this.timer <= 0) {
           this.awareness = 0.3;
+          if (sp.flight?.kind === 'patrol') { this.pickWaypoint(ctx); return sp.walkSpeed; }
+          if (sp.flight && this.pickLanding(ctx, true)) return sp.walkSpeed;
           this.set('IDLE', 3 + ctx.rnd() * 3);
           return 0;
         }
@@ -146,6 +248,7 @@ export class Animal {
     if (this.health <= 0) {
       this.state = 'DEAD';
       this.speed = 0;
+      this.vy = 0;
       return true;
     }
     this.awareness = 1;
@@ -159,8 +262,13 @@ export class Animal {
   }
 
   private pickNext(ctx: AnimalContext): void {
+    if (this.species.flight?.kind === 'patrol') { this.pickWaypoint(ctx); return; }
     if (ctx.rnd() < 0.5) {
       this.set('FORAGING', 5 + ctx.rnd() * 7);
+      return;
+    }
+    if (this.species.flight) {
+      if (!this.pickLanding(ctx, false)) this.set('IDLE', this.idleTime(ctx));
       return;
     }
     for (let i = 0; i < 8; i++) {
@@ -169,7 +277,7 @@ export class Animal {
       if (Math.abs(x) > LIMIT || Math.abs(z) > LIMIT) continue;
       if (ctx.world.heightAt(x, z) < ctx.world.waterLevel + 0.3) continue;
       // Stay near the play area: never wander farther out than 90 m (or the current radius).
-      if (Math.hypot(x, z) > Math.max(90, Math.hypot(this.position.x, this.position.z))) continue;
+      if (Math.hypot(x, z) > Math.max(WANDER, Math.hypot(this.position.x, this.position.z))) continue;
       this.target = { x, z };
       this.set('MOVING', 40);
       return;
@@ -177,17 +285,56 @@ export class Animal {
     this.set('IDLE', this.idleTime(ctx));
   }
 
+  /** Patrol flyers: fly to a new waypoint at a new altitude. */
+  private pickWaypoint(ctx: AnimalContext): void {
+    const fl = this.species.flight!;
+    for (let i = 0; i < 10; i++) {
+      const a = ctx.rnd() * Math.PI * 2, d = 30 + ctx.rnd() * 90;
+      const x = this.position.x + Math.cos(a) * d, z = this.position.z + Math.sin(a) * d;
+      if (Math.abs(x) > LIMIT - 10 || Math.abs(z) > LIMIT - 10) continue;
+      if (Math.hypot(x, z) > Math.max(WANDER, Math.hypot(this.position.x, this.position.z))) continue;
+      this.target = { x, z };
+      this.patrolAlt = fl.cruiseAlt[0] + ctx.rnd() * (fl.cruiseAlt[1] - fl.cruiseAlt[0]);
+      this.set('MOVING', 60);
+      return;
+    }
+    this.set('IDLE', 1 + ctx.rnd() * 2);
+  }
+
+  /** Flyers: choose a place to land and fly there. `far`: prefer spots away from the player. */
+  private pickLanding(ctx: AnimalContext, far: boolean): boolean {
+    const w = ctx.world, p = ctx.player.position;
+    for (let i = 0; i < 10; i++) {
+      let x: number, z: number;
+      const a = ctx.rnd() * Math.PI * 2;
+      if (this.habitat === 'pond') {
+        const r = w.pond.r * 0.8 * Math.sqrt(ctx.rnd());
+        x = w.pond.x + Math.cos(a) * r; z = w.pond.z + Math.sin(a) * r;
+      } else {
+        const d = far ? 40 + ctx.rnd() * 40 : 12 + ctx.rnd() * 35;
+        x = this.position.x + Math.cos(a) * d; z = this.position.z + Math.sin(a) * d;
+        if (Math.abs(x) > LIMIT || Math.abs(z) > LIMIT) continue;
+        if (w.heightAt(x, z) < w.waterLevel + 0.3) continue;
+        if (Math.hypot(x, z) > Math.max(WANDER, Math.hypot(this.position.x, this.position.z))) continue;
+      }
+      if (far && i < 9 && Math.hypot(x - p.x, z - p.z) < 35) continue;
+      this.target = { x, z };
+      this.set('MOVING', 45);
+      return true;
+    }
+    return false;
+  }
+
   private move(dt: number, ctx: AnimalContext): void {
     if (this.speed < 0.001) return;
     const nx = this.position.x - Math.sin(this.direction) * this.speed * dt;
     const nz = this.position.z - Math.cos(this.direction) * this.speed * dt;
-    const blocked = Math.abs(nx) > LIMIT || Math.abs(nz) > LIMIT ||
-      ctx.world.heightAt(nx, nz) < ctx.world.waterLevel + 0.15;
+    const water = !this.species.flight && ctx.world.heightAt(nx, nz) < ctx.world.waterLevel + 0.15;
+    const blocked = Math.abs(nx) > LIMIT || Math.abs(nz) > LIMIT || water;
     if (!blocked) { this.position.x = nx; this.position.z = nz; return; }
     if (this.state === 'FLEEING') {
-      const turn = ctx.rnd() < 0.5 ? 1.2 : -1.2;
-      this.fleeHeading += turn;
-      this.direction += turn;
+      // Blocked (edge or water): head back toward the center.
+      this.fleeHeading = Math.atan2(this.position.x, this.position.z) + (ctx.rnd() < 0.5 ? 0.6 : -0.6);
     } else {
       this.target = null;
       this.speed = 0;

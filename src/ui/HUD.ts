@@ -1,6 +1,9 @@
 import { Game, EquipId } from '../game/Game';
+import { rangeFinder } from '../game/Ranging';
+import { BinocularsOverlay } from './BinocularsOverlay';
 
-const LABEL: Record<string, string> = { camera: 'CAMERA', binoculars: 'BINOCULARS', weapon: 'RIFLE' };
+const LABEL: Record<string, string> = { camera: 'CAMERA', binoculars: 'BINOCULARS', weapon: 'RIFLE', launcher: 'ROCKETS' };
+const BTN: Record<EquipId, string> = { binoculars: 'BINOCULARS', camera: 'CAMERA', rifle: 'RIFLE', launcher: 'ROCKETS' };
 
 /** Minimal HUD: time/equipment, zoom, crosshair or scope overlay, equipment row, feedback. */
 export class HUD {
@@ -12,7 +15,12 @@ export class HUD {
   private cross = document.createElement('div');
   private crouchBtn = document.createElement('button');
   private triggerBtn = document.createElement('button');
+  private lockEl = document.createElement('div');
+  private lockText = document.createElement('div');
   private eqBtns = new Map<EquipId, HTMLButtonElement>();
+  private bino: BinocularsOverlay;
+  private rangeT = 0;
+  private rangeText = '---';
   private toastTimer = 0;
   private dbg: HTMLDivElement | null = null;
   private frames = 0;
@@ -25,6 +33,7 @@ export class HUD {
       equip: (id: EquipId) => void; menu: () => void; crouch: () => void; trigger: () => void;
       zoomIn: () => void; zoomOut: () => void;
     },
+    opts: { equipment: EquipId[] },
   ) {
     const top = document.createElement('div'); top.className = 'top';
     top.append(this.time, this.info);
@@ -37,8 +46,8 @@ export class HUD {
       const b = document.createElement('button'); b.textContent = label; b.onclick = fn; return b;
     };
     const bottom = document.createElement('div'); bottom.className = 'bottom';
-    for (const [id, label] of [['binoculars', 'BINOCULARS'], ['camera', 'CAMERA'], ['rifle', 'RIFLE']] as Array<[EquipId, string]>) {
-      const b = mk(label, () => actions.equip(id));
+    for (const id of opts.equipment) {
+      const b = mk(BTN[id], () => actions.equip(id));
       this.eqBtns.set(id, b);
       bottom.append(b);
     }
@@ -51,7 +60,9 @@ export class HUD {
     const zoom = document.createElement('div'); zoom.className = 'zoomcol';
     zoom.append(mk('+', actions.zoomIn), mk('−', actions.zoomOut));
 
-    root.append(this.overlay, this.flashEl, top, this.cross, this.toastEl, zoom, this.crouchBtn, this.triggerBtn, bottom);
+    this.lockEl.className = 'lock'; this.lockText.className = 'locktext';
+    this.bino = new BinocularsOverlay(root);
+    root.append(this.overlay, this.flashEl, top, this.cross, this.toastEl, this.lockEl, this.lockText, zoom, this.crouchBtn, this.triggerBtn, bottom);
     if (new URLSearchParams(location.search).has('debug')) {
       this.dbg = document.createElement('div');
       this.dbg.className = 'dbg';
@@ -85,20 +96,52 @@ export class HUD {
     const g = this.game, cur = g.current;
     const t = g.sim.timeOfDay;
     const hh = Math.floor(t), mm = Math.floor((t - hh) * 60);
-    const ammo = cur.kind === 'weapon' ? ` · ${g.rifle.reloading ? 'reloading' : `${g.rifle.ammo}/${g.rifle.magazine}`}` : '';
+    const ammo = cur.kind === 'weapon' ? ` · ${g.rifle.reloading ? 'reloading' : `${g.rifle.ammo}/${g.rifle.magazine}`}`
+      : cur.kind === 'launcher' ? ` · ${g.launcher.reloading ? 'reloading' : `${g.launcher.ammo}/${g.launcher.magazine}`}` : '';
     this.time.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${LABEL[cur.kind]}${ammo}`;
 
     this.crouchBtn.textContent = g.player.crouching ? 'STAND' : 'CROUCH';
-    this.triggerBtn.textContent = cur.kind === 'weapon' ? 'FIRE' : 'PHOTO';
+    this.triggerBtn.textContent = cur.kind === 'weapon' ? 'FIRE' : cur.kind === 'launcher' ? 'LAUNCH' : 'PHOTO';
     this.triggerBtn.style.display = cur.kind === 'binoculars' ? 'none' : '';
-    const cls = cur.overlay === 'none' ? 'overlay' : `overlay ${cur.overlay}`;
+    const isBino = cur.overlay === 'binoculars';
+    this.bino.show(isBino);
+    if (isBino) {
+      this.rangeT -= dt;
+      if (this.rangeT <= 0) {
+        this.rangeT = 0.2;
+        const r = rangeFinder(g);
+        this.rangeText = r ? `${Math.round(r.dist)} m` : '---';
+      }
+      this.bino.update(g.player.zoom, this.rangeText);
+    }
+    const cls = cur.overlay === 'none' || isBino ? 'overlay' : `overlay ${cur.overlay}`;
     if (this.overlay.className !== cls) {
       this.overlay.className = cls;
-      this.cross.style.display = cur.overlay === 'none' ? '' : 'none';
+      this.cross.style.display = cur.overlay === 'none' || cur.overlay === 'launcher' ? '' : 'none';
     }
     for (const [id, b] of this.eqBtns) {
       const on = (id === 'rifle' && cur.kind === 'weapon') || (id === 'camera' && cur.kind === 'camera') || (id === 'binoculars' && cur.kind === 'binoculars');
       b.classList.toggle('active', on);
+    }
+
+    // Rocket lock-on bracket
+    const lk = g.lock;
+    if (cur.kind === 'launcher') {
+      if (lk.target && lk.ndc && Math.abs(lk.ndc.x) < 1.2 && Math.abs(lk.ndc.y) < 1.2) {
+        this.lockEl.style.display = 'block';
+        this.lockEl.style.left = `${50 + lk.ndc.x * 50}%`;
+        this.lockEl.style.top = `${50 - lk.ndc.y * 50}%`;
+        this.lockEl.className = lk.state === 'locked' ? 'lock locked' : 'lock';
+      } else {
+        this.lockEl.style.display = 'none';
+      }
+      this.lockText.style.display = 'block';
+      this.lockText.textContent = lk.state === 'locked' ? `LOCKED · ${lk.target!.species.name} · ${lk.distance} m`
+        : lk.state === 'locking' ? `LOCKING ${Math.round(lk.progress * 100)}%` : 'SEARCHING';
+      this.lockText.style.color = lk.state === 'locked' ? '#ff5a4a' : '#fff';
+    } else {
+      this.lockEl.style.display = 'none';
+      this.lockText.style.display = 'none';
     }
 
     const z = g.player.zoom;

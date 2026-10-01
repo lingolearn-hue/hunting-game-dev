@@ -1,4 +1,4 @@
-import { Animal, AnimalContext } from './Animal';
+import { Animal, AnimalContext, CallEvent } from './Animal';
 import { World, WORLD_SIZE } from './World';
 import { LevelDef } from '../data/environments/Level';
 import { SPECIES } from '../data/species';
@@ -6,6 +6,8 @@ import { makeRng } from '../util/rng';
 
 export class AnimalManager {
   readonly list: Animal[] = [];
+  /** Animal calls since the last drain (consumed by audio). */
+  readonly events: CallEvent[] = [];
   private rnd: () => number;
 
   constructor(private world: World, level: LevelDef) {
@@ -17,12 +19,18 @@ export class AnimalManager {
       if (!species) continue;
       for (let i = 0; i < spawn.count; i++) {
         for (let t = 0; t < 60; t++) {
-          const d = spawn.minDist + this.rnd() * (spawn.maxDist - spawn.minDist);
-          // 'front': within +-40 deg of forward (-Z); otherwise any direction.
-          const a = spawn.front && i === 0 ? (this.rnd() - 0.5) * 1.4 : this.rnd() * Math.PI * 2;
-          const x = Math.sin(a) * d, z = -Math.cos(a) * d;
+          let x: number, z: number;
+          if (spawn.at === 'pond') {
+            const P = world.pond, a = this.rnd() * Math.PI * 2, r = P.r * 0.7 * Math.sqrt(this.rnd());
+            x = P.x + Math.cos(a) * r; z = P.z + Math.sin(a) * r;
+          } else {
+            const d = spawn.minDist + this.rnd() * (spawn.maxDist - spawn.minDist);
+            // 'front': within +-40 deg of forward (-Z); otherwise any direction.
+            const a = spawn.front && i === 0 ? (this.rnd() - 0.5) * 1.4 : this.rnd() * Math.PI * 2;
+            x = Math.sin(a) * d; z = -Math.cos(a) * d;
+            if (world.heightAt(x, z) < world.waterLevel + 0.5) continue;
+          }
           if (Math.abs(x) > half || Math.abs(z) > half) continue;
-          if (world.heightAt(x, z) < world.waterLevel + 0.5) continue;
           this.list.push(new Animal(id++, species, x, z, world, this.rnd));
           break;
         }
@@ -31,9 +39,11 @@ export class AnimalManager {
   }
 
   update(dt: number, player: AnimalContext['player'], hour: number): void {
-    const ctx: AnimalContext = { world: this.world, player, hour, rnd: this.rnd };
+    const ctx: AnimalContext = { world: this.world, player, hour, rnd: this.rnd, events: this.events };
     for (const a of this.list) a.update(dt, ctx);
   }
+
+  drainEvents(): CallEvent[] { return this.events.splice(0); }
 
   /** A loud noise (gunshot): close animals panic, distant ones become wary. */
   noise(x: number, z: number): void {

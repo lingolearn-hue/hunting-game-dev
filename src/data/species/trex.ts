@@ -6,6 +6,9 @@ export const TREX: SpeciesDef = {
   viewRange: 100, closeRange: 20, detectRate: 0.2, awarenessDecay: 0.05,
   alertThreshold: 0.3, fleeDuration: [4, 6], reaction: 'stand',
   activity: [[5, 20]], habitat: 'valley',
+  rarity: 5,
+  description: 'Apex predator. Fearless and rarely seen up close.',
+  call: { kind: 'roar', interval: [30, 70] },
   health: 500,
   bounds: { halfLength: 5.2, halfWidth: 0.9, height: 4.8 },
   look: {

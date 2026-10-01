@@ -5,6 +5,9 @@ import { Game } from '../game/Game';
 import { WORLD_SIZE } from '../game/World';
 import { Prop } from '../data/environments/Level';
 import { CreatureView } from './CreatureView';
+import { Rocket, Explosion } from '../game/Rocket';
+
+const TERRAIN_MARGIN = 120;
 
 export class SyntheticRenderer implements Renderer {
   private gl!: THREE.WebGLRenderer;
@@ -12,10 +15,16 @@ export class SyntheticRenderer implements Renderer {
   private view = new ViewCamera();
   private container!: HTMLElement;
   private views = new Map<number, CreatureView>();
+  private rocketViews = new Map<number, { g: THREE.Group; trail: THREE.Line }>();
+  private blastViews = new Map<Explosion, THREE.Mesh>();
   private last = performance.now();
   private sun = new THREE.DirectionalLight(0xffffff, 1.6);
   private hemi = new THREE.HemisphereLight(0xbfd9ff, 0x3a4a2a, 0.9);
   private palette!: Game['level']['palette'];
+  private moon = new THREE.DirectionalLight(0x8898c8, 0);
+  private skyHour = -1;
+  private tmpA = new THREE.Color();
+  private tmpB = new THREE.Color();
 
   init(container: HTMLElement, game: Game): void {
     this.container = container;
@@ -29,9 +38,10 @@ export class SyntheticRenderer implements Renderer {
     this.scene.fog = new THREE.Fog(sky, P.fogNear, P.fogFar);
     this.sun.color.setHex(P.sun); this.sun.intensity = P.sunIntensity;
     this.hemi.color.setHex(P.hemiSky); this.hemi.groundColor.setHex(P.hemiGround);
-    this.scene.add(this.hemi, this.sun);
+    this.scene.add(this.hemi, this.sun, this.moon);
     this.sun.position.set(60, 90, 30);
 
+    this.applySky(game.sim.timeOfDay);
     this.buildTerrain(game);
     this.buildWater(game);
     this.buildProps(game);
@@ -48,13 +58,114 @@ export class SyntheticRenderer implements Renderer {
     const now = performance.now();
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
+    const cull = (this.scene.fog as THREE.Fog).far + 5;
     for (const a of game.sim.animals.list) {
       let v = this.views.get(a.id);
       if (!v) { v = new CreatureView(a); this.scene.add(v.group); this.views.set(a.id, v); }
-      v.update(a, dt);
+      const pp = game.player.position;
+      const near = Math.hypot(a.position.x - pp.x, a.position.z - pp.z) < cull; // beyond the fog: skip
+      v.group.visible = near;
+      if (near) v.update(a, dt);
     }
+    this.syncEffects(game);
+    this.applySky(game.sim.timeOfDay);
     this.view.update(game.player);
     this.gl.render(this.scene, this.view.camera);
+  }
+
+  private rocketGroup(): THREE.Group {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8), new THREE.MeshLambertMaterial({ color: 0xdddddd }));
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.25, 8), new THREE.MeshLambertMaterial({ color: 0xaa3030 }));
+    nose.position.y = 0.57;
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.6, 8), new THREE.MeshBasicMaterial({ color: 0xffa030 }));
+    flame.position.y = -0.7; flame.rotation.x = Math.PI;
+    g.add(body, nose, flame);
+    return g;
+  }
+
+  /** Rockets (with smoke trail) and explosions from the simulation. */
+  private syncEffects(game: Game): void {
+    const up = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3();
+    const live = new Set<number>();
+    for (const r of game.sim.rockets.rockets as Rocket[]) {
+      live.add(r.id);
+      let v = this.rocketViews.get(r.id);
+      if (!v) {
+        const g = this.rocketGroup();
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(31 * 3), 3));
+        const trail = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 }));
+        trail.frustumCulled = false;
+        this.scene.add(g, trail);
+        v = { g, trail };
+        this.rocketViews.set(r.id, v);
+      }
+      v.g.position.set(r.pos[0], r.pos[1], r.pos[2]);
+      v.g.quaternion.setFromUnitVectors(up, dir.set(r.dir[0], r.dir[1], r.dir[2]));
+      const arr = (v.trail.geometry.getAttribute('position') as THREE.BufferAttribute);
+      const pts = [...r.trail, r.pos];
+      pts.forEach((p, i) => arr.setXYZ(i, p[0], p[1], p[2]));
+      v.trail.geometry.setDrawRange(0, pts.length);
+      arr.needsUpdate = true;
+    }
+    for (const [id, v] of this.rocketViews) {
+      if (live.has(id)) continue;
+      this.scene.remove(v.g, v.trail);
+      v.trail.geometry.dispose();
+      this.rocketViews.delete(id);
+    }
+
+    const blasts = new Set<Explosion>(game.sim.rockets.explosions);
+    for (const e of blasts) {
+      let m = this.blastViews.get(e);
+      if (!m) {
+        m = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.9 }));
+        m.position.set(e.x, e.y, e.z);
+        this.scene.add(m);
+        this.blastViews.set(e, m);
+      }
+      const k = Math.min(1, e.age / 0.5);
+      m.scale.setScalar(0.5 + k * 6.5);
+      (m.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 0.9 * (1 - e.age));
+    }
+    for (const [e, m] of this.blastViews) {
+      if (blasts.has(e)) continue;
+      this.scene.remove(m);
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+      this.blastViews.delete(e);
+    }
+  }
+
+  /** Sun/moon, sky, fog and light levels from the time of day. */
+  private applySky(hour: number): void {
+    if (Math.abs(hour - this.skyHour) < 0.004) return;
+    this.skyHour = hour;
+    const P = this.palette;
+    const ang = ((hour - 6) / 12) * Math.PI;      // 0 = sunrise (east, +X), PI = sunset (west)
+    const elev = Math.sin(ang);
+    const sx = Math.cos(ang) * 100, sy = elev * 100;
+    const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const day = smooth(-0.12, 0.25, elev);
+    const twilight = 1 - Math.min(1, Math.abs(elev) / 0.3);
+
+    // Sky / fog colour: night blue -> day, orange near the horizon.
+    const sky = this.tmpA.setHex(0x0b1226).lerp(this.tmpB.setHex(P.sky), day);
+    if (elev > -0.15) sky.lerp(this.tmpB.setHex(0xf0905a), 0.55 * twilight);
+    (this.scene.background as THREE.Color).copy(sky);
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.copy(sky);
+    fog.near = 15 + (P.fogNear - 15) * day;
+    fog.far = 90 + (P.fogFar - 90) * day;
+
+    // Sun (day) and moon (night)
+    this.sun.position.set(sx, Math.max(sy, 5), 30);
+    this.sun.intensity = P.sunIntensity * Math.min(1, Math.max(0, elev * 2.5));
+    this.sun.color.setHex(P.sun).lerp(this.tmpB.setHex(0xff8a4a), 0.6 * twilight);
+    this.moon.position.set(-sx, Math.max(-sy, 5), -30);
+    this.moon.intensity = 0.35 * (1 - day);
+    this.hemi.intensity = 0.3 + 0.6 * day;
   }
 
   aspect(): number {
@@ -68,8 +179,9 @@ export class SyntheticRenderer implements Renderer {
   }
 
   private buildTerrain(game: Game): void {
-    const seg = 96;
-    const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, seg, seg);
+    const size = WORLD_SIZE + 2 * TERRAIN_MARGIN; // ground continues beyond the playable area (hidden by fog)
+    const seg = Math.round(size / 3);
+    const geo = new THREE.PlaneGeometry(size, size, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position as THREE.BufferAttribute;
     const col = new Float32Array(pos.count * 3);
@@ -78,7 +190,8 @@ export class SyntheticRenderer implements Renderer {
     for (let i = 0; i < pos.count; i++) {
       const y = game.world.heightAt(pos.getX(i), pos.getZ(i));
       pos.setY(i, y);
-      if (y < game.world.waterLevel + 0.4) c.copy(sand);
+      const pd = Math.hypot(pos.getX(i) - game.world.pond.x, pos.getZ(i) - game.world.pond.z);
+      if (y < game.world.waterLevel + 0.4 && pd < game.world.pond.r * 2.4) c.copy(sand); // beach only around the pond
       else c.copy(lo).lerp(hi, Math.min(1, Math.max(0, (y + 1) / 5)));
       col.set([c.r, c.g, c.b], i * 3);
     }
@@ -118,7 +231,10 @@ export class SyntheticRenderer implements Renderer {
     };
 
     const P = this.palette;
-    if (game.level.treeStyle === 'conifer') {
+    if (game.level.treeStyle === 'container') {
+      inst(new THREE.BoxGeometry(2.6, 2.6, 6), P.leaf, trees, 1.3);
+      inst(new THREE.IcosahedronGeometry(0.8, 0), P.bush, bushes, 0.4, 0.8);
+    } else if (game.level.treeStyle === 'conifer') {
       inst(new THREE.CylinderGeometry(0.18, 0.28, 3, 6), P.trunk, trees, 1.5);
       inst(new THREE.ConeGeometry(1.6, 5, 7), P.leaf, trees, 5.0);
       inst(new THREE.IcosahedronGeometry(0.8, 0), P.bush, bushes, 0.4, 0.8);

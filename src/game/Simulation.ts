@@ -1,20 +1,25 @@
 import { World } from './World';
 import { Player, EYE_STAND, EYE_CROUCH, WALK_SPEED, CROUCH_SPEED } from './Player';
 import { AnimalManager } from './AnimalManager';
+import { RocketSystem } from './Rocket';
 import { yawOf } from '../util/quat';
 
 export const STEP = 1 / 30; // fixed timestep, seconds
 
 export class Simulation {
-  /** Game time in hours [0,24). Frozen until day/night is implemented. */
+  /** Game time in hours [0,24). */
   timeOfDay: number;
-  timeScale = 0; // game hours per real second
+  timeScale = 1 / 60; // game hours per real second (1 game minute per second)
   readonly animals: AnimalManager;
+  readonly rockets: RocketSystem;
+  /** True while the player is pressing against the edge of the playable area. */
+  atEdge = false;
   private acc = 0;
 
-  constructor(readonly world: World, readonly player: Player) {
+  constructor(readonly world: World, readonly player: Player, rnd: () => number) {
     this.timeOfDay = world.level.startHour;
     this.animals = new AnimalManager(world, world.level);
+    this.rockets = new RocketSystem(world, this.animals, rnd);
   }
 
   update(dt: number): void {
@@ -29,6 +34,7 @@ export class Simulation {
     this.timeOfDay = (this.timeOfDay + this.timeScale * dt) % 24;
     this.movePlayer(dt);
     this.animals.update(dt, this.player, this.timeOfDay);
+    this.rockets.update(dt);
   }
 
   /** Walking/crouching relative to the view heading, with sliding collision. */
@@ -52,6 +58,7 @@ export class Simulation {
       moved = Math.hypot(p.position.x - px, p.position.z - pz);
     }
     p.speed = moved / dt;
+    this.atEdge = w.nearEdge(p.position.x, p.position.z, 1.5);
 
     const target = p.crouching ? EYE_CROUCH : EYE_STAND;
     p.eyeHeight += (target - p.eyeHeight) * Math.min(1, dt * 8);

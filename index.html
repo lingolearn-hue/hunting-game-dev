@@ -40,7 +40,13 @@
     linear-gradient(#000, #000) center / 2px 62vmin no-repeat,
     linear-gradient(#000, #000) center / 62vmin 2px no-repeat,
     radial-gradient(circle at 50% 50%, transparent 0, transparent 34vmin, #000 35vmin); }
-  #hud .overlay.binoculars { background: radial-gradient(circle at 50% 50%, transparent 0, transparent 36vmin, #000 37vmin); }
+  #hud .overlay.launcher { background: radial-gradient(circle at 50% 50%, transparent 0, transparent 9vmin, rgba(255,255,255,.55) 9.2vmin, transparent 9.6vmin); }
+  #hud .lock { position: absolute; width: 56px; height: 56px; margin: -28px 0 0 -28px; border: 2px solid #ffb040;
+    border-radius: 6px; display: none; }
+  #hud .lock.locked { border-color: #ff4a3a; animation: lockpulse .5s infinite alternate; }
+  @keyframes lockpulse { from { transform: scale(1); } to { transform: scale(1.15); } }
+  #hud .locktext { position: absolute; left: 0; right: 0; top: 58%; text-align: center; font-size: 14px; font-weight: 600;
+    text-shadow: 0 0 4px #000; display: none; }
   #hud button.active { background: rgba(76,154,95,.75); }
   #hud .zoomcol { position: absolute; right: 49px; bottom: calc(env(safe-area-inset-bottom, 0px) + 282px);
     display: flex; flex-direction: column; gap: 8px; }
@@ -78,6 +84,7 @@
   #start { position: fixed; inset: 0; background: #10201a; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 24px; z-index: 10; }
   #start button { font-size: 18px; padding: 14px 28px; border-radius: 10px; border: 0; background: #4c9a5f; color: #fff; }
+  #start #modeBtn { font-size: 14px; padding: 8px 16px; background: #2c4a38; }
   #levels { display: flex; flex-direction: column; gap: 10px; }
   #levels small { display: block; font-size: 12px; opacity: .8; margin-top: 2px; }
   #start p { max-width: 320px; opacity: .8; font-size: 14px; margin: 0; }
@@ -89,6 +96,7 @@
 <div id="start">
   <h1>Hunting Game</h1>
   <p>Hold the phone upright and look around. Left stick walks, right stick looks, red button = photo/fire, CROUCH for stealth, +/- or pinch to zoom. Desktop: drag to look, WASD to walk, C to crouch, wheel to zoom, 1/2/3 to switch equipment, click/Space to use, R to recalibrate.</p>
+  <button id="modeBtn"></button>
   <div id="levels"></div>
   <p id="startMsg"></p>
 </div>

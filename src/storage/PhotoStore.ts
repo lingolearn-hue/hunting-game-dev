@@ -17,6 +17,18 @@ export interface PhotoRecord {
   breakdown: ScoreBreakdown | null;
 }
 
+/** Field journal entry, one per discovered species. */
+export interface JournalEntry {
+  species: string;
+  firstSeen: number;
+  level: string;
+  watchSeconds: number;
+  behaviors: string[];   // observed states, lower case
+  photos: number;
+  bestScore: number;
+  kills: number;
+}
+
 export interface HuntRecord {
   id?: number;
   schema: number;
@@ -30,7 +42,7 @@ export interface HuntRecord {
 }
 
 const DB_NAME = 'hunting-game';
-const DB_VERSION = 2; // v2: added 'hunts'. Add migrations in onupgradeneeded when bumping.
+const DB_VERSION = 3; // v2: added 'hunts'. v3: added 'journal'. Add migrations in onupgradeneeded when bumping.
 export const RECORD_SCHEMA = 1;
 
 const req = <T>(r: IDBRequest<T>) =>
@@ -51,6 +63,7 @@ export class PhotoStore {
           if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
           if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs');
           if (!db.objectStoreNames.contains('hunts')) db.createObjectStore('hunts', { keyPath: 'id', autoIncrement: true });
+          if (!db.objectStoreNames.contains('journal')) db.createObjectStore('journal', { keyPath: 'species' });
         };
         o.onsuccess = () => res(o.result);
         o.onerror = () => rej(o.error);
@@ -99,5 +112,17 @@ export class PhotoStore {
     const db = await this.db();
     const all = await req(db.transaction('hunts').objectStore('hunts').getAll()) as HuntRecord[];
     return all.sort((a, b) => b.timestamp - a.timestamp);
+  }
+
+  async listJournal(): Promise<JournalEntry[]> {
+    const db = await this.db();
+    return req(db.transaction('journal').objectStore('journal').getAll()) as Promise<JournalEntry[]>;
+  }
+
+  async putJournal(entry: JournalEntry): Promise<void> {
+    const db = await this.db();
+    const tx = db.transaction('journal', 'readwrite');
+    tx.objectStore('journal').put(entry);
+    await done(tx);
   }
 }

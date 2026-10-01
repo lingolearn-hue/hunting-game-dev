@@ -14,6 +14,8 @@ export interface SpawnSpec {
   species: string; count: number; minDist: number; maxDist: number;
   /** First animal of this entry spawns in front of the player (easy to find). */
   front?: boolean;
+  /** Spawn on the pond (water birds). */
+  at?: 'pond';
 }
 
 export interface LevelDef {
@@ -25,7 +27,10 @@ export interface LevelDef {
   terrain: { hillAmp: number; hillFreq: number };
   pond: { x: number; z: number; r: number };
   props: PropSpec[];
-  treeStyle: 'conifer' | 'palm';
+  treeStyle: 'conifer' | 'palm' | 'container';
+  ambience: 'forest' | 'valley' | 'range';
+  /** Extra equipment available on this level. */
+  extraEquipment?: Array<'launcher'>;
   palette: Palette;
   spawns: SpawnSpec[];
 }

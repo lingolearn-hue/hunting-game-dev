@@ -68,7 +68,8 @@ function scoreAnimal(game: Game, a: Animal, aspect: number): { total: number; br
   const visible = samples.filter((s) => !isBlocked(game.world, from, s)).length / samples.length;
   if (visible === 0) return null;
 
-  const hs = (maxY - minY) / 2; // fraction of frame height
+  // Size as a fraction of frame height; wide subjects (birds, long animals) count by width.
+  const hs = Math.max((maxY - minY) / 2, ((maxX - minX) / 2) * aspect);
   const size = 30 * (hs <= 0.85 ? clamp(hs / 0.25, 0, 1) : clamp(1 - (hs - 0.85) / 0.3, 0, 1));
   // A tiny speck in the frame earns little from the other factors.
   const k = clamp(hs / 0.15, 0, 1);

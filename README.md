@@ -1,10 +1,10 @@
-Version: 7 — 2026-09-30
+Version: 9 — 2026-09-30
 
 # Hunting Game
 
-Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v05.md`.
+Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v07.md`.
 
-Status: photography + hunting: walking/crouching, dual-stick touch controls, Forest and Dinosaur Valley, equipment (binoculars, camera, rifle) with zoom and aim sway, hit model, harvest log, photo gallery, PWA/offline.
+Status: photography + hunting + naturalist mode: 3 levels (Forest, Dinosaur Valley, Machine Range with seeker rockets), 480 m area, 25 species, day/night, positional audio, field journal, dual-stick controls, PWA/offline.
 
 Debug overlay: append `?debug` to the URL (nearest animal, state, awareness).
 

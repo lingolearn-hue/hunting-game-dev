@@ -6,6 +6,9 @@ export const RAPTOR: SpeciesDef = {
   viewRange: 80, closeRange: 12, detectRate: 0.3, awarenessDecay: 0.08,
   alertThreshold: 0.35, fleeDuration: [5, 8], reaction: 'flee',
   activity: [[5, 20]], habitat: 'valley',
+  rarity: 3,
+  description: 'Fast, sharp-sighted hunter. Wary of anything that moves.',
+  call: { kind: 'screech', interval: [12, 35] },
   health: 80,
   bounds: { halfLength: 1.5, halfWidth: 0.25, height: 1.1 },
   look: {

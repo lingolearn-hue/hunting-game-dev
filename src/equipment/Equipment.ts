@@ -1,5 +1,5 @@
-export type EquipmentKind = 'camera' | 'binoculars' | 'weapon';
-export type Overlay = 'none' | 'scope' | 'binoculars';
+export type EquipmentKind = 'camera' | 'binoculars' | 'weapon' | 'launcher';
+export type Overlay = 'none' | 'scope' | 'binoculars' | 'launcher';
 
 /** Equipment is modular and independent from the simulation core. */
 export interface Equipment {

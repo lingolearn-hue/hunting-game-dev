@@ -42,10 +42,15 @@ export class Player {
     this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, z));
   }
 
-  updateOrientation(): void {
-    const base = this.deviceQuat
-      ? multiply(yawQuat(this.lookYaw), multiply(this.calibration, multiply(this.deviceQuat, pitchQuat(this.lookPitch))))
+  /** View orientation for a given phone orientation (null = no sensor). */
+  orientationFor(dev: Quat | null): Quat {
+    const base = dev
+      ? multiply(yawQuat(this.lookYaw), multiply(this.calibration, multiply(dev, pitchQuat(this.lookPitch))))
       : multiply(yawQuat(this.lookYaw), pitchQuat(this.lookPitch));
-    this.orientation = multiply(yawQuat(this.swayYaw + this.kickYaw), multiply(base, pitchQuat(this.swayPitch + this.kickPitch)));
+    return multiply(yawQuat(this.swayYaw + this.kickYaw), multiply(base, pitchQuat(this.swayPitch + this.kickPitch)));
+  }
+
+  updateOrientation(): void {
+    this.orientation = this.orientationFor(this.deviceQuat);
   }
 }

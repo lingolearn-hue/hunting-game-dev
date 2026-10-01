@@ -6,6 +6,9 @@ export const TRICERATOPS: SpeciesDef = {
   viewRange: 55, closeRange: 15, detectRate: 0.18, awarenessDecay: 0.06,
   alertThreshold: 0.5, fleeDuration: [5, 8], reaction: 'stand',
   activity: [[5, 19]], habitat: 'valley',
+  rarity: 3,
+  description: 'Three-horned herbivore. Holds its ground when threatened.',
+  call: { kind: 'grunt', interval: [25, 60] },
   health: 300,
   bounds: { halfLength: 3.7, halfWidth: 1.0, height: 2.9 },
   look: {

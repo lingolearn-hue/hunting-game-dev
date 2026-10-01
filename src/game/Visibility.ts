@@ -23,7 +23,9 @@ export function isBlocked(world: World, from: V3, to: V3): boolean {
     const s = p.scale;
     const parts: Array<[number, number, number]> =
       p.kind === 'tree'
-        ? (world.level.treeStyle === 'palm' ? [[0.25, 0, 6], [2.0, 5.6, 7.0]] : [[0.25, 0, 3], [0.9, 3, 7]])
+        ? (world.level.treeStyle === 'palm' ? [[0.25, 0, 6], [2.0, 5.6, 7.0]]
+          : world.level.treeStyle === 'container' ? [[1.6, 0, 2.6]]
+          : [[0.25, 0, 3], [0.9, 3, 7]])
       : p.kind === 'bush' ? [[0.8, 0, 0.9]]
       : [[0.6, 0, 0.5]];
     let ground: number | null = null;

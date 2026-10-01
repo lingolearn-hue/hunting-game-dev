@@ -9,8 +9,8 @@ export class Weapon implements Equipment {
   readonly maxZoom = 8;
   readonly overlay = 'scope' as const;
 
-  swayDeg = 0.4;          // aim stability (degrees, standing still)
-  spreadDeg = 0.15;       // accuracy: random cone radius
+  swayDeg = 0.3;          // aim stability (degrees, standing still)
+  spreadDeg = 0.1;        // accuracy: random cone radius
   range = 300;            // m, max distance
   effectiveRange = 150;   // m, full damage up to here
   damage = 100;
