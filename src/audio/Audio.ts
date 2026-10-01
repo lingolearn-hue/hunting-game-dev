@@ -16,6 +16,7 @@ export class AudioEngine {
   private stepAcc = 0;
   private birdT = 3;
   private farT = 40;
+  private thudT = 0;
 
   /** Must be called from a user gesture (iOS). */
   unlock(): void {
@@ -245,6 +246,15 @@ export class AudioEngine {
     this.burst(this.reverb, 0.5, 0.8, 'lowpass', 3000);
   }
 
+  /** The player is mauled: heavy thud, roar and a rumble. */
+  maul(): void {
+    if (!this.ctx || !this.enabled) return;
+    this.tone(this.master, 'sine', 90, 30, 0.7, 0.9);
+    this.burst(this.master, 0.5, 0.8, 'lowpass', 900);
+    this.voice('roar', this.master, 0.9);
+    this.burst(this.reverb, 0.8, 0.6, 'lowpass', 2000);
+  }
+
   launch(): void {
     if (!this.ctx || !this.enabled) return;
     this.burst(this.master, 0.9, 0.5, 'bandpass', 1500, 0, 0.8);
@@ -291,6 +301,21 @@ export class AudioEngine {
       }
     } else {
       this.stepAcc = 0;
+    }
+
+    // Heavy footfalls of charging predators (positional)
+    this.thudT -= dt;
+    if (this.thudT <= 0) {
+      this.thudT = 0.4;
+      const yaw = yawOf(p.orientation);
+      for (const a of game.sim.animals.list) {
+        if (a.state !== 'CHARGING' && a.state !== 'STALKING') continue;
+        const dx = a.position.x - p.position.x, dz = a.position.z - p.position.z, dist = Math.hypot(dx, dz) || 0.001;
+        if (dist > 90) continue;
+        const size = clamp(a.species.bounds.halfLength / 2, 0.4, 2.5);
+        const out = this.bus(dist, (dx * Math.cos(yaw) + dz * -Math.sin(yaw)) / dist, true, 0.5 + size * 0.5);
+        this.tone(out, 'sine', 75 / Math.sqrt(size), 35, 0.22, 0.9);
+      }
     }
 
     // Crickets at night

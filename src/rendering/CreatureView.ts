@@ -306,8 +306,8 @@ export class CreatureView {
   }
 
   private setNeck(a: Animal, pose: { idle: number; alert: number; forage: number; flee: number }, dt: number): void {
-    const target = a.state === 'FORAGING' ? pose.forage : a.state === 'ALERT' ? pose.alert
-      : a.state === 'FLEEING' ? pose.flee : pose.idle;
+    const target = a.state === 'FORAGING' ? pose.forage : a.state === 'STALKING' ? pose.forage * 0.45 : a.state === 'ALERT' ? pose.alert
+      : a.state === 'FLEEING' || a.state === 'CHARGING' ? pose.flee : pose.idle;
     this.neck.rotation.x += (target - this.neck.rotation.x) * Math.min(1, dt * 6);
   }
 }

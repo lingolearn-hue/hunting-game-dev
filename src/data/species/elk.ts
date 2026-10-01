@@ -9,6 +9,7 @@ export const ELK: SpeciesDef = {
   alertThreshold: 0.4, fleeDuration: [6, 10], reaction: 'flee',
   activity: [[4.5, 10], [15.5, 21]], habitat: 'forest',
   call: { kind: 'bugle', interval: [30, 80] },
+  smell: 0.9,
   health: 200,
   bounds: { halfLength: 1.2, halfWidth: 0.35, height: 2.6 },
   look: {

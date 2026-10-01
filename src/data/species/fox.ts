@@ -9,6 +9,7 @@ export const FOX: SpeciesDef = {
   alertThreshold: 0.35, fleeDuration: [5, 8], reaction: 'flee',
   activity: [[17, 24], [0, 7]], habitat: 'forest',
   call: { kind: 'bark', interval: [25, 70] },
+  smell: 0.9,
   health: 60,
   bounds: { halfLength: 0.55, halfWidth: 0.16, height: 0.6 },
   look: {

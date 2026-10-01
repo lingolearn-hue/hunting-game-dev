@@ -17,6 +17,8 @@ export class SyntheticRenderer implements Renderer {
   private views = new Map<number, CreatureView>();
   private rocketViews = new Map<number, { g: THREE.Group; trail: THREE.Line }>();
   private blastViews = new Map<Explosion, THREE.Mesh>();
+  private blood!: THREE.InstancedMesh;
+  private bloodVersion = -1;
   private last = performance.now();
   private sun = new THREE.DirectionalLight(0xffffff, 1.6);
   private hemi = new THREE.HemisphereLight(0xbfd9ff, 0x3a4a2a, 0.9);
@@ -45,6 +47,9 @@ export class SyntheticRenderer implements Renderer {
     this.buildTerrain(game);
     this.buildWater(game);
     this.buildProps(game);
+    this.blood = new THREE.InstancedMesh(new THREE.CircleGeometry(0.22, 8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x6a0f0f }), 400);
+    this.blood.count = 0; this.blood.frustumCulled = false;
+    this.scene.add(this.blood);
     this.resize();
   }
 
@@ -68,9 +73,27 @@ export class SyntheticRenderer implements Renderer {
       if (near) v.update(a, dt);
     }
     this.syncEffects(game);
+    this.syncBlood(game);
     this.applySky(game.sim.timeOfDay);
     this.view.update(game.player);
     this.gl.render(this.scene, this.view.camera);
+  }
+
+  /** Blood trail of wounded animals. */
+  private syncBlood(game: Game): void {
+    const m = game.sim.animals;
+    if (m.bloodVersion === this.bloodVersion) return;
+    this.bloodVersion = m.bloodVersion;
+    const d = new THREE.Object3D();
+    m.blood.forEach((b, i) => {
+      d.position.set(b.x, game.world.heightAt(b.x, b.z) + 0.05, b.z);
+      d.rotation.y = i * 1.7;
+      d.scale.setScalar(0.7 + ((i * 37) % 10) / 14);
+      d.updateMatrix();
+      this.blood.setMatrixAt(i, d.matrix);
+    });
+    this.blood.count = m.blood.length;
+    this.blood.instanceMatrix.needsUpdate = true;
   }
 
   private rocketGroup(): THREE.Group {

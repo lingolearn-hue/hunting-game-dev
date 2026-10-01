@@ -9,6 +9,7 @@ export const ROVER: SpeciesDef = {
   alertThreshold: 0.35, fleeDuration: [5, 8], reaction: 'flee',
   activity: [[0, 24]], habitat: 'range',
   call: { kind: 'motor', interval: [8, 20] },
+  smell: 0,
   health: 60,
   bounds: { halfLength: 0.7, halfWidth: 0.4, height: 0.75 },
   look: {

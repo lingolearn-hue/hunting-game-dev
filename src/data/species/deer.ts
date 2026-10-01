@@ -9,6 +9,7 @@ export const DEER: SpeciesDef = {
   rarity: 1,
   description: 'Common woodland deer. Shy, but curious when still.',
   call: { kind: 'grunt', interval: [20, 50] },
+  smell: 0.9,
   health: 100,
   bounds: { halfLength: 0.85, halfWidth: 0.25, height: 1.95 },
   look: {

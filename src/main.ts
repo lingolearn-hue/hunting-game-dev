@@ -79,6 +79,10 @@ function begin(level: LevelDef): void {
       label: 'SOUND: ON', keepOpen: true,
       fn: (b) => { audio.setEnabled(!audio.enabled); b.textContent = audio.enabled ? 'SOUND: ON' : 'SOUND: OFF'; },
     },
+    {
+      label: 'PREDATORS: ON', keepOpen: true,
+      fn: (b) => { game.player.safe = !game.player.safe; b.textContent = game.player.safe ? 'PREDATORS: OFF' : 'PREDATORS: ON'; },
+    },
     { label: 'FULLSCREEN', fn: toggleFullscreen },
     { label: 'LEVEL SELECT', fn: () => location.reload() },
   ]);
@@ -227,6 +231,18 @@ function begin(level: LevelDef): void {
     journal.observe(game, dt, renderer.aspect());
     game.lock.update(game, dt, renderer.aspect(), game.current.kind === 'launcher');
     handleBlasts();
+    for (const sp of game.sim.drainAttackLog()) {
+      audio.maul();
+      hud.flash(0.95, 900, '#a00');
+      hud.toast(`${sp.name} got you — respawned`, 'predators back off for a while');
+    }
+    for (const a of game.sim.animals.drainBleedDeaths()) {
+      const p = game.player.position, dist = Math.round(Math.hypot(a.position.x - p.x, a.position.z - p.z));
+      journal.recordKill(a, level.id);
+      store.addHunt({ schema: 1, timestamp: Date.now(), level: level.id, species: a.species.id, zone: 'bleed', distance: dist, damage: 0, killed: true })
+        .catch(() => { /* storage unavailable */ });
+      hud.toast(`Wounded ${a.species.name} bled out`, `${dist} m away`);
+    }
     if (game.sim.atEdge && !edgeShown) hud.toast('Edge of the area');
     edgeShown = game.sim.atEdge;
     audio.playCalls(game.sim.animals.drainEvents(), game);

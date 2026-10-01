@@ -15,6 +15,7 @@ export const DINO: LevelDef = {
   ],
   treeStyle: 'palm',
   ambience: 'valley',
+  windSpeed: 4,
   palette: {
     sky: 0xd6cf9a, fogNear: 40, fogFar: 170,
     groundLo: 0x4b6b2a, groundHi: 0x8a9a3a, sand: 0xa89a6a, water: 0x4a8a78,

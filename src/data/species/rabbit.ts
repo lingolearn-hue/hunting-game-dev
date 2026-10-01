@@ -9,6 +9,7 @@ export const RABBIT: SpeciesDef = {
   alertThreshold: 0.3, fleeDuration: [4, 7], reaction: 'flee',
   activity: [[5, 9], [17, 21]], habitat: 'forest',
   call: { kind: 'squeak', interval: [40, 90] },
+  smell: 0.6,
   health: 20,
   bounds: { halfLength: 0.28, halfWidth: 0.1, height: 0.35 },
   look: {

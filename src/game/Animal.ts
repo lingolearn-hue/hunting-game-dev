@@ -1,15 +1,20 @@
 import { SpeciesDef } from '../data/species/SpeciesDef';
 import { World, WORLD_SIZE } from './World';
+import { isBlocked } from './Visibility';
 
-export type AnimalState = 'IDLE' | 'FORAGING' | 'MOVING' | 'ALERT' | 'FLEEING' | 'DEAD';
+export type AnimalState = 'IDLE' | 'FORAGING' | 'MOVING' | 'ALERT' | 'FLEEING' | 'STALKING' | 'CHARGING' | 'DEAD';
 export interface Vec3 { x: number; y: number; z: number; }
 export interface CallEvent { species: SpeciesDef; x: number; y: number; z: number; }
 export interface AnimalContext {
   world: World;
-  player: { position: Vec3; speed: number; crouching: boolean };
+  player: { position: Vec3; speed: number; crouching: boolean; vulnerable: boolean };
   hour: number;
   rnd: () => number;
   events: CallEvent[];
+  attacks: Animal[];                   // predators that reached the player
+  bleedDeaths: Animal[];               // wounded animals that bled out
+  dropBlood: (x: number, z: number) => void;
+  wind: { x: number; z: number; speed: number };
 }
 
 const LIMIT = WORLD_SIZE / 2 - 6;
@@ -44,6 +49,13 @@ export class Animal {
   private fleeHeading = 0;
   private vy = 0;           // fall speed of dead flyers
   private patrolAlt = 0;
+  private cooldown = 0;       // predators: time before hunting again
+  private huntTime = 0;
+  private windingUp = false;
+  private bleed = 0;          // HP lost per second while wounded
+  private bleedDist = 0;
+  private losT = 0;
+  private hasLos = true;
   private nextCall: number;
   private soar: { cx: number; cz: number; r: number; phase: number; base: number; t: number } | null = null;
 
@@ -79,6 +91,11 @@ export class Animal {
 
   get flying(): boolean { return this.altitude > 0.3; }
 
+  /** A predator that is winding up, stalking or charging. */
+  get hunting(): boolean {
+    return this.state === 'STALKING' || this.state === 'CHARGING' || (this.state === 'ALERT' && this.windingUp);
+  }
+
   activityAt(hour: number): number {
     return this.activitySchedule.some(([a, b]) => hour >= a && hour < b) ? 1 : 0.4;
   }
@@ -100,15 +117,17 @@ export class Animal {
       return;
     }
     this.callTimer(dt, ctx);
+    if (this.bleed > 0 && this.tickBleed(dt, ctx)) return;
     if (this.soar) { this.updateSoar(dt, ctx); return; }
 
 
     const p = ctx.player.position;
     const dx = p.x - this.position.x, dz = p.z - this.position.z;
     const dist = Math.hypot(dx, dz);
-    this.updateAwareness(dt, dist, ctx.player.speed, ctx.player.crouching);
+    this.updateSight(dt, dist, ctx);
+    this.updateAwareness(dt, dist, ctx);
     const desired = this.updateState(dt, dx, dz, ctx);
-    const accel = this.state === 'FLEEING' ? 15 : 6;
+    const accel = this.state === 'FLEEING' || this.state === 'CHARGING' ? 15 : 6;
     this.speed += clamp(desired - this.speed, -accel * dt, accel * dt);
     this.move(dt, ctx);
     this.updateAltitude(dt);
@@ -165,14 +184,32 @@ export class Animal {
     this.altitude += clamp(target - this.altitude, -rate * dt, rate * dt);
   }
 
-  /** Simple detection: distance, close range, player movement. (Visibility/wind later.) */
-  private updateAwareness(dt: number, dist: number, playerSpeed: number, crouching: boolean): void {
-    const sp = this.species;
+  /** Line of sight to the player, re-checked a few times per second. */
+  private updateSight(dt: number, dist: number, ctx: AnimalContext): void {
+    this.losT -= dt;
+    if (this.losT > 0) return;
+    this.losT = 0.25 + ctx.rnd() * 0.1;
+    const sp = this.species, p = ctx.player.position;
+    this.hasLos = dist <= sp.viewRange &&
+      !isBlocked(ctx.world, [this.position.x, this.position.y + sp.bounds.height * 0.8, this.position.z], [p.x, p.y, p.z]);
+  }
+
+  /** Detection: sight (needs line of sight), scent (carried by the wind to animals downwind), close range. */
+  private updateAwareness(dt: number, dist: number, ctx: AnimalContext): void {
+    const sp = this.species, pl = ctx.player;
+    // Moving is noticed more; crouching (stationary or moving) is stealthier.
+    const stealth = pl.speed > 0.1 ? (pl.crouching ? 1.6 : 2.5) : (pl.crouching ? 0.6 : 1);
     let rate = 0;
     if (dist < sp.viewRange) {
-      // Moving is noticed more; crouching (stationary or moving) is stealthier.
-      const stealth = playerSpeed > 0.1 ? (crouching ? 1.6 : 2.5) : (crouching ? 0.6 : 1);
-      rate = (1 - dist / sp.viewRange) * sp.detectRate * stealth;
+      rate += (1 - dist / sp.viewRange) * sp.detectRate * stealth * (this.hasLos ? 1 : 0.12);
+    }
+    const smell = sp.smell ?? (sp.flight ? 0.15 : 0.6);
+    if (smell > 0 && dist > 0.5) {
+      const w = ctx.wind;
+      // The animal is downwind of the player if the wind blows from the player toward it.
+      const along = ((this.position.x - pl.position.x) * w.x + (this.position.z - pl.position.z) * w.z) / dist;
+      const range = 40 + 100 * smell * Math.min(1, w.speed / 6);
+      if (along > 0.3 && dist < range) rate += (1 - dist / range) * 0.25 * smell * along * (pl.speed > 0.1 ? 1.3 : 1);
     }
     if (dist < sp.closeRange) rate += 0.6;
     this.awareness = clamp(this.awareness + (rate - sp.awarenessDecay) * dt, 0, 1);
@@ -181,14 +218,16 @@ export class Animal {
   private set(state: AnimalState, timer: number): void {
     this.state = state;
     this.timer = timer;
+    this.windingUp = false;
   }
 
   /** Returns desired speed. */
   private updateState(dt: number, dx: number, dz: number, ctx: AnimalContext): number {
     const sp = this.species;
     const towardPlayer = Math.atan2(-dx, -dz);
+    const attacking = this.state === 'STALKING' || this.state === 'CHARGING';
 
-    if (this.state !== 'FLEEING') {
+    if (this.state !== 'FLEEING' && !attacking) {
       if (this.awareness >= 1 && sp.reaction === 'flee') {
         this.fleeHeading = Math.atan2(dx, dz) + (ctx.rnd() - 0.5) * 0.8;
         this.set('FLEEING', sp.fleeDuration[0] + ctx.rnd() * (sp.fleeDuration[1] - sp.fleeDuration[0]));
@@ -197,6 +236,11 @@ export class Animal {
       } else if (this.state === 'ALERT' && this.awareness < 0.2) {
         this.set('IDLE', 2 + ctx.rnd() * 3);
       }
+    }
+
+    if (sp.predator && sp.reaction === 'hunt') {
+      const r = this.huntLogic(dt, dx, dz, Math.hypot(dx, dz), ctx);
+      if (r !== null) return r;
     }
 
     this.timer -= dt;
@@ -237,6 +281,8 @@ export class Animal {
           return 0;
         }
         return sp.runSpeed * (this.health < this.maxHealth * 0.6 ? 0.65 : 1); // wounded: slower
+      case 'STALKING':
+      case 'CHARGING':
       case 'DEAD':
         return 0;
     }
@@ -249,12 +295,89 @@ export class Animal {
       this.state = 'DEAD';
       this.speed = 0;
       this.vy = 0;
+      this.bleed = 0;
       return true;
     }
+    if (this.health <= this.maxHealth * 0.7) this.bleed = Math.max(this.bleed, this.maxHealth * 0.012); // wounded: bleeds out slowly
+    const pr = this.species.predator;
+    if (pr && this.health > this.maxHealth * pr.fleeBelow) { // enraged predator keeps attacking
+      this.awareness = 1;
+      if (this.state !== 'CHARGING') { this.set('CHARGING', 0); this.huntTime = 0; }
+      return false;
+    }
+    if (pr) this.cooldown = pr.cooldown;
     this.awareness = 1;
     this.fleeHeading = Math.atan2(from.x - this.position.x, from.z - this.position.z) + (rnd() - 0.5) * 0.8;
     this.set('FLEEING', 8 + rnd() * 6);
     return false;
+  }
+
+  /** Predator behavior: warning roar, stalk or charge, attack the player. Returns desired speed, or null for normal behavior. */
+  private huntLogic(dt: number, dx: number, dz: number, dist: number, ctx: AnimalContext): number | null {
+    const pr = this.species.predator!;
+    this.cooldown = Math.max(0, this.cooldown - dt);
+    const face = Math.atan2(-dx, -dz);
+    const canHunt = ctx.player.vulnerable;
+
+    if (this.state === 'STALKING' || this.state === 'CHARGING') {
+      const charging = this.state === 'CHARGING', turn = (charging ? 3 : 2) * dt;
+      this.direction += clamp(wrap(face - this.direction), -turn, turn);
+      this.huntTime += dt;
+      if (!canHunt) { this.calmDown(pr.cooldown * 0.5); return 0; }
+      if (dist <= pr.attackRange) { ctx.attacks.push(this); this.calmDown(pr.cooldown); return 0; }
+      if (!charging) {
+        if (dist <= pr.chargeRange || this.awareness >= 1) { this.set('CHARGING', 0); this.huntTime = 0; return pr.chargeSpeed; }
+        if (this.awareness < 0.15 || dist > pr.maxRange * 1.3) { this.calmDown(pr.cooldown * 0.5); return 0; }
+        return pr.stalkSpeed ?? pr.chargeSpeed * 0.3;
+      }
+      if (this.huntTime > pr.chargeTime || dist > pr.maxRange * 1.5) { this.calmDown(pr.cooldown); return 0; } // tires, gives up
+      return pr.chargeSpeed;
+    }
+
+    if (this.state !== 'FLEEING' && this.cooldown <= 0 && canHunt && this.awareness >= pr.triggerAwareness && dist <= pr.maxRange) {
+      if (!(this.state === 'ALERT' && this.windingUp)) {
+        this.set('ALERT', pr.windup);
+        this.windingUp = true;
+        this.emitCall(ctx); // warning roar
+      }
+    }
+    if (this.state === 'ALERT' && this.windingUp) {
+      this.direction += clamp(wrap(face - this.direction), -4 * dt, 4 * dt);
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        const stalk = pr.stalkSpeed !== undefined && dist > pr.chargeRange;
+        this.set(stalk ? 'STALKING' : 'CHARGING', 0);
+        this.huntTime = 0;
+      }
+      return 0;
+    }
+    return null;
+  }
+
+  /** Stops hunting and rests for a while (after an attack, when tired, or when the player respawns). */
+  calmDown(cooldown: number): void {
+    this.set('IDLE', 3);
+    this.target = null;
+    this.awareness = 0.3;
+    this.cooldown = Math.max(this.cooldown, cooldown);
+    this.huntTime = 0;
+  }
+
+  private emitCall(ctx: AnimalContext): void {
+    if (this.species.call && ctx.events.length < 60) {
+      ctx.events.push({ species: this.species, x: this.position.x, y: this.position.y, z: this.position.z });
+    }
+  }
+
+  /** Bleeding: loses health, leaves a blood trail while moving. Returns true if it bled out. */
+  private tickBleed(dt: number, ctx: AnimalContext): boolean {
+    this.health -= this.bleed * dt;
+    this.bleedDist += this.speed * dt;
+    if (this.speed > 0.3 && this.bleedDist >= 2.5) { this.bleedDist = 0; ctx.dropBlood(this.position.x, this.position.z); }
+    if (this.health > 0) return false;
+    this.health = 0; this.state = 'DEAD'; this.speed = 0; this.bleed = 0;
+    ctx.bleedDeaths.push(this);
+    return true;
   }
 
   private idleTime(ctx: AnimalContext): number {

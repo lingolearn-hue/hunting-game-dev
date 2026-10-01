@@ -31,6 +31,8 @@ export interface LevelDef {
   ambience: 'forest' | 'valley' | 'range';
   /** Extra equipment available on this level. */
   extraEquipment?: Array<'launcher'>;
+  /** Base wind speed (m/s). Default 3. */
+  windSpeed?: number;
   palette: Palette;
   spawns: SpawnSpec[];
 }

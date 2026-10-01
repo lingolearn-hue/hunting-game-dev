@@ -59,6 +59,14 @@ export class Game {
     const amp = this.current.swayDeg * DEG * (p.crouching ? 0.5 : 1) * (p.speed > 0.1 ? 3 : 1);
     p.swayYaw = (amp * (Math.sin(1.1 * t) + 0.5 * Math.sin(2.3 * t + 1.7))) / 1.5;
     p.swayPitch = (amp * (Math.sin(0.9 * t + 0.6) + 0.5 * Math.sin(2.9 * t + 0.3))) / 1.5;
+    // Ground shakes when a big predator charges nearby.
+    const th = this.sim.animals.threat(p.position.x, p.position.z);
+    if (th && th.animal.state === 'CHARGING' && th.dist < 40) {
+      const a = 0.009 * (1 - th.dist / 40) * Math.min(1.5, th.animal.species.bounds.halfLength / 2);
+      p.swayPitch += a * Math.sin(t * 47);
+      p.swayYaw += a * Math.cos(t * 41);
+    }
+
     // Recoil decay
     const k = Math.exp(-6 * dt);
     p.kickPitch *= k; p.kickYaw *= k;

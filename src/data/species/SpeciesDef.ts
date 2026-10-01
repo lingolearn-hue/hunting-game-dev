@@ -1,4 +1,4 @@
-export type Reaction = 'flee' | 'stand' | 'ignore'; // 'stand': holds ground; 'ignore': never reacts (soaring flyers)
+export type Reaction = 'flee' | 'stand' | 'ignore' | 'hunt'; // 'stand': holds ground; 'ignore': never reacts; 'hunt': predator, attacks the player
 
 export type CallKind =
   | 'chirp' | 'caw' | 'quack' | 'screech' | 'grunt' | 'bugle' | 'bark' | 'squeak' | 'roar' | 'honk'
@@ -8,6 +8,19 @@ export interface FlightDef {
   kind: 'soar' | 'hop' | 'patrol'; // soar: circles at altitude. hop: perches, flies between spots. patrol: flies waypoints, never lands.
   cruiseAlt: [number, number];   // m above ground
   radius?: number;               // soar: orbit radius (m)
+}
+
+export interface PredatorDef {
+  triggerAwareness: number;  // awareness needed to start hunting the player
+  maxRange: number;          // only hunts while the player is within this distance (m)
+  windup: number;            // s of roar/warning before the attack run
+  stalkSpeed?: number;       // creeping approach speed (m/s) until within chargeRange
+  chargeRange: number;       // start charging when closer than this (stalkers)
+  chargeSpeed: number;       // m/s
+  chargeTime: number;        // s, then it tires and gives up
+  attackRange: number;       // m, the player is hit within this distance
+  cooldown: number;          // s before it hunts again
+  fleeBelow: number;         // when hit: keeps attacking above this health fraction, flees below
 }
 
 export interface LookDef {
@@ -45,6 +58,9 @@ export interface SpeciesDef {
   habitat: string;
   health: number;
   flight?: FlightDef;
+  predator?: PredatorDef;
+  /** 0..1: how well it smells the player downwind (default 0.6, flyers 0.15). */
+  smell?: number;
   call?: { kind: CallKind; interval: [number, number] };
   /** Approximate bounding box for scoring/visibility (m). y = 0 at the underside. */
   bounds: { halfLength: number; halfWidth: number; height: number };

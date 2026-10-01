@@ -15,6 +15,7 @@ export const MACHINE: LevelDef = {
   ],
   treeStyle: 'container',
   ambience: 'range',
+  windSpeed: 5,
   extraEquipment: ['launcher'],
   palette: {
     sky: 0xb9c6d0, fogNear: 60, fogFar: 210,

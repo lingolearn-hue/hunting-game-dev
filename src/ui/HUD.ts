@@ -1,5 +1,6 @@
 import { Game, EquipId } from '../game/Game';
 import { rangeFinder } from '../game/Ranging';
+import { yawOf } from '../util/quat';
 import { BinocularsOverlay } from './BinocularsOverlay';
 
 const LABEL: Record<string, string> = { camera: 'CAMERA', binoculars: 'BINOCULARS', weapon: 'RIFLE', launcher: 'ROCKETS' };
@@ -15,6 +16,9 @@ export class HUD {
   private cross = document.createElement('div');
   private crouchBtn = document.createElement('button');
   private triggerBtn = document.createElement('button');
+  private windArrow = document.createElement('span');
+  private windText = document.createElement('span');
+  private threatEl = document.createElement('div');
   private lockEl = document.createElement('div');
   private lockText = document.createElement('div');
   private eqBtns = new Map<EquipId, HTMLButtonElement>();
@@ -36,7 +40,11 @@ export class HUD {
     opts: { equipment: EquipId[] },
   ) {
     const top = document.createElement('div'); top.className = 'top';
-    top.append(this.time, this.info);
+    const wind = document.createElement('span');
+    this.windArrow.textContent = '↑'; this.windArrow.style.cssText = 'display:inline-block;transition:transform .3s';
+    wind.append('WIND ', this.windArrow, this.windText);
+    top.append(this.time, wind, this.info);
+    this.threatEl.className = 'threat';
     this.cross.className = 'cross';
     this.overlay.className = 'overlay';
     this.flashEl.className = 'flash';
@@ -62,7 +70,7 @@ export class HUD {
 
     this.lockEl.className = 'lock'; this.lockText.className = 'locktext';
     this.bino = new BinocularsOverlay(root);
-    root.append(this.overlay, this.flashEl, top, this.cross, this.toastEl, this.lockEl, this.lockText, zoom, this.crouchBtn, this.triggerBtn, bottom);
+    root.append(this.overlay, this.flashEl, top, this.cross, this.toastEl, this.threatEl, this.lockEl, this.lockText, zoom, this.crouchBtn, this.triggerBtn, bottom);
     if (new URLSearchParams(location.search).has('debug')) {
       this.dbg = document.createElement('div');
       this.dbg.className = 'dbg';
@@ -70,7 +78,8 @@ export class HUD {
     }
   }
 
-  flash(strength = 0.9, ms = 350): void {
+  flash(strength = 0.9, ms = 350, color = '#fff'): void {
+    this.flashEl.style.background = color;
     this.flashEl.style.transition = 'none';
     this.flashEl.style.opacity = String(strength);
     requestAnimationFrame(() => {
@@ -124,6 +133,26 @@ export class HUD {
       b.classList.toggle('active', on);
     }
 
+    // Wind: arrow shows where the wind blows toward, relative to the view (scent is carried that way)
+    const yaw = yawOf(g.player.orientation), w = g.sim.wind;
+    const fr = w.x * -Math.sin(yaw) + w.z * -Math.cos(yaw), rr = w.x * Math.cos(yaw) + w.z * -Math.sin(yaw);
+    this.windArrow.style.transform = `rotate(${(Math.atan2(rr, fr) * 180 / Math.PI).toFixed(0)}deg)`;
+    this.windText.textContent = ` ${w.speed.toFixed(1)} m/s`;
+
+    // Predator warning
+    const px = g.player.position.x, pz = g.player.position.z;
+    const th = g.sim.animals.threat(px, pz);
+    if (th) {
+      const dx = th.animal.position.x - px, dz = th.animal.position.z - pz;
+      const rel = Math.atan2(dx * Math.cos(yaw) + dz * -Math.sin(yaw), dx * -Math.sin(yaw) + dz * -Math.cos(yaw));
+      const arrow = Math.abs(rel) > 2.4 ? '▼' : rel < -0.5 ? '◀' : rel > 0.5 ? '▶' : '▲';
+      const what = th.animal.state === 'ALERT' ? 'ROARS' : th.animal.state === 'STALKING' ? 'STALKING' : 'CHARGING';
+      this.threatEl.textContent = `⚠ ${th.animal.species.name.toUpperCase()} ${what} · ${Math.round(th.dist)} m ${arrow}`;
+      this.threatEl.style.display = 'block';
+    } else {
+      this.threatEl.style.display = 'none';
+    }
+
     // Rocket lock-on bracket
     const lk = g.lock;
     if (cur.kind === 'launcher') {
@@ -146,7 +175,8 @@ export class HUD {
 
     const z = g.player.zoom;
     const digital = cur.kind === 'camera' && z > g.camera.opticalZoomMax + 0.001 ? ' digital' : '';
-    this.info.textContent = `${z.toFixed(1)}x${digital} · ${sensor ? 'sensor' : 'mouse/touch'} · ${this.fps} fps`;
+    const deaths = g.sim.deaths > 0 ? ` · ☠${g.sim.deaths}` : '';
+    this.info.textContent = `${z.toFixed(1)}x${digital}${deaths} · ${sensor ? 'sensor' : 'mouse/touch'} · ${this.fps} fps`;
     if (this.dbg) {
       const n = g.sim.animals.nearest(g.player.position.x, g.player.position.z);
       this.dbg.textContent = n

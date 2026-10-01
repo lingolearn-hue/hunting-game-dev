@@ -9,6 +9,7 @@ export const UGV: SpeciesDef = {
   alertThreshold: 0.4, fleeDuration: [4, 6], reaction: 'stand',
   activity: [[0, 24]], habitat: 'range',
   call: { kind: 'motor', interval: [10, 25] },
+  smell: 0,
   health: 400,
   bounds: { halfLength: 1.9, halfWidth: 1.05, height: 1.9 },
   look: {

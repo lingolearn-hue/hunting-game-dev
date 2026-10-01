@@ -9,6 +9,7 @@ export const PARASAUROLOPHUS: SpeciesDef = {
   rarity: 2,
   description: 'Crested duck-billed herbivore. Calls to its herd.',
   call: { kind: 'honk', interval: [15, 40] },
+  smell: 0.6,
   health: 200,
   bounds: { halfLength: 3.7, halfWidth: 0.55, height: 3.6 },
   look: {

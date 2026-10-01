@@ -10,6 +10,7 @@ export const SCOUTDRONE: SpeciesDef = {
   activity: [[0, 24]], habitat: 'range',
   flight: { kind: 'patrol', cruiseAlt: [10, 30] },
   call: { kind: 'hum', interval: [5, 14] },
+  smell: 0,
   health: 30,
   bounds: { halfLength: 0.4, halfWidth: 0.4, height: 0.25 },
   look: {

@@ -9,6 +9,7 @@ export const BOAR: SpeciesDef = {
   alertThreshold: 0.5, fleeDuration: [5, 8], reaction: 'flee',
   activity: [[4.5, 10], [16, 22]], habitat: 'forest',
   call: { kind: 'grunt', interval: [20, 55] },
+  smell: 1,
   health: 150,
   bounds: { halfLength: 0.8, halfWidth: 0.3, height: 1.0 },
   look: {

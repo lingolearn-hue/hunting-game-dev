@@ -6,9 +6,11 @@ export const BEAR: SpeciesDef = {
   rarity: 4,
   walkSpeed: 1.3, foragingSpeed: 0.3, runSpeed: 8,
   viewRange: 60, closeRange: 15, detectRate: 0.18, awarenessDecay: 0.05,
-  alertThreshold: 0.45, fleeDuration: [4, 6], reaction: 'stand',
+  alertThreshold: 0.45, fleeDuration: [4, 6], reaction: 'hunt',
   activity: [[5, 11], [16, 22]], habitat: 'forest',
   call: { kind: 'roar', interval: [60, 140] },
+  smell: 1,
+  predator: { triggerAwareness: 0.7, maxRange: 40, windup: 2.5, chargeRange: 0, chargeSpeed: 8, chargeTime: 4, attackRange: 2.6, cooldown: 25, fleeBelow: 0.35 },
   health: 350,
   bounds: { halfLength: 1.0, halfWidth: 0.5, height: 1.5 },
   look: {

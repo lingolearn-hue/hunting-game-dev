@@ -23,7 +23,7 @@ export interface ShotResult {
   breakdown: ScoreBreakdown | null;
 }
 
-const POSTURE: Record<Animal['state'], number> = { DEAD: 0, ALERT: 10, MOVING: 8, IDLE: 7, FORAGING: 5, FLEEING: 4 };
+const POSTURE: Record<Animal['state'], number> = { DEAD: 0, STALKING: 9, CHARGING: 8, ALERT: 10, MOVING: 8, IDLE: 7, FORAGING: 5, FLEEING: 4 };
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const MAX_DIST = 150;
 

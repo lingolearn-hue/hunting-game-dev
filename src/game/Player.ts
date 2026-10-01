@@ -11,6 +11,10 @@ export class Player {
   position = { x: 0, y: 0, z: 0 }; // meters, Y up (y = eye position)
   speed = 0;                       // actual ground speed, m/s
   crouching = false;
+  /** Seconds of protection after a respawn. */
+  invuln = 0;
+  /** Predators cannot attack (menu toggle). */
+  safe = false;
   eyeHeight = EYE_STAND;
   /** Movement input: x = strafe right, y = forward, each in [-1,1]. Relative to view heading. */
   move = { x: 0, y: 0 };
@@ -41,6 +45,8 @@ export class Player {
   setZoom(z: number): void {
     this.zoom = Math.max(this.minZoom, Math.min(this.maxZoom, z));
   }
+
+  get vulnerable(): boolean { return !this.safe && this.invuln <= 0; }
 
   /** View orientation for a given phone orientation (null = no sensor). */
   orientationFor(dev: Quat | null): Quat {

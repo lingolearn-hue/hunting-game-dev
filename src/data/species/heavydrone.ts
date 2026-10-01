@@ -10,6 +10,7 @@ export const HEAVYDRONE: SpeciesDef = {
   activity: [[0, 24]], habitat: 'range',
   flight: { kind: 'patrol', cruiseAlt: [15, 35] },
   call: { kind: 'hum', interval: [6, 16] },
+  smell: 0,
   health: 200,
   bounds: { halfLength: 1.1, halfWidth: 1.2, height: 0.5 },
   look: {

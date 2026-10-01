@@ -8,6 +8,11 @@ export class AnimalManager {
   readonly list: Animal[] = [];
   /** Animal calls since the last drain (consumed by audio). */
   readonly events: CallEvent[] = [];
+  readonly attacks: Animal[] = [];
+  readonly bleedDeaths: Animal[] = [];
+  /** Blood trail drops from wounded animals (newest last). `bloodVersion` changes when the list changes. */
+  readonly blood: Array<{ x: number; z: number }> = [];
+  bloodVersion = 0;
   private rnd: () => number;
 
   constructor(private world: World, level: LevelDef) {
@@ -38,12 +43,29 @@ export class AnimalManager {
     }
   }
 
-  update(dt: number, player: AnimalContext['player'], hour: number): void {
-    const ctx: AnimalContext = { world: this.world, player, hour, rnd: this.rnd, events: this.events };
+  update(dt: number, player: AnimalContext['player'], hour: number, wind: AnimalContext['wind']): void {
+    const ctx: AnimalContext = {
+      world: this.world, player, hour, rnd: this.rnd, events: this.events, wind,
+      attacks: this.attacks, bleedDeaths: this.bleedDeaths,
+      dropBlood: (x, z) => { this.blood.push({ x, z }); if (this.blood.length > 400) this.blood.shift(); this.bloodVersion++; },
+    };
     for (const a of this.list) a.update(dt, ctx);
   }
 
   drainEvents(): CallEvent[] { return this.events.splice(0); }
+  drainAttacks(): Animal[] { return this.attacks.splice(0); }
+  drainBleedDeaths(): Animal[] { return this.bleedDeaths.splice(0); }
+
+  /** Nearest predator that is winding up, stalking or charging. */
+  threat(x: number, z: number): { animal: Animal; dist: number } | null {
+    let best: { animal: Animal; dist: number } | null = null;
+    for (const a of this.list) {
+      if (!a.hunting) continue;
+      const d = Math.hypot(a.position.x - x, a.position.z - z);
+      if (!best || d < best.dist) best = { animal: a, dist: d };
+    }
+    return best;
+  }
 
   /** A loud noise (gunshot): close animals panic, distant ones become wary. */
   noise(x: number, z: number): void {
