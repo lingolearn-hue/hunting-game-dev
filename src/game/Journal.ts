@@ -21,6 +21,7 @@ export class FieldJournal {
   }
 
   private entry(a: Animal, level: string, discover: boolean): JournalEntry | null {
+    if (a.species.monster) return null; // night monsters are not part of the field journal
     let e = this.entries.get(a.species.id);
     if (!e) {
       if (!discover) return null;
@@ -33,7 +34,8 @@ export class FieldJournal {
 
   recordPhoto(a: Animal | undefined, score: number, level: string): void {
     if (!a || score <= 0) return;
-    const e = this.entry(a, level, true)!;
+    const e = this.entry(a, level, true);
+    if (!e) return;
     e.photos++;
     e.bestScore = Math.max(e.bestScore, score);
     this.onChange?.(e);
@@ -41,7 +43,8 @@ export class FieldJournal {
 
   recordKill(a: Animal | undefined, level: string): void {
     if (!a) return;
-    const e = this.entry(a, level, true)!;
+    const e = this.entry(a, level, true);
+    if (!e) return;
     e.kills++;
     this.onChange?.(e);
   }
@@ -68,7 +71,8 @@ export class FieldJournal {
       const w = (this.watch.get(a.species.id) ?? 0) + step;
       this.watch.set(a.species.id, w);
       if (w < WATCH_TO_DISCOVER) continue;
-      const e = this.entry(a, game.level.id, true)!;
+      const e = this.entry(a, game.level.id, true);
+      if (!e) continue;
       e.watchSeconds += step;
       const b = a.state.toLowerCase();
       if (!e.behaviors.includes(b)) { e.behaviors.push(b); this.onChange?.(e); }

@@ -8,6 +8,19 @@ const mat = (c: number) => {
   if (!m) { m = new THREE.MeshLambertMaterial({ color: c, flatShading: true }); mats.set(c, m); }
   return m;
 };
+const EYE_MAT = new THREE.MeshBasicMaterial({ color: 0xff2a1a, fog: false });
+let GLOW_MAT: THREE.SpriteMaterial | null = null;
+const glowMaterial = (): THREE.SpriteMaterial => {
+  if (!GLOW_MAT) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,60,40,0.95)'); gr.addColorStop(0.35, 'rgba(255,30,20,0.35)'); gr.addColorStop(1, 'rgba(255,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    GLOW_MAT = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true });
+  }
+  return GLOW_MAT;
+};
 const box = (w: number, h: number, d: number, c: number) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(c));
 /** Cone with its axis pointing along direction (0, cos t, sin t) in the YZ plane (t = angle from +Y toward +Z). */
 const cone = (r: number, len: number, c: number, t: number) => {
@@ -56,6 +69,7 @@ export class CreatureView {
     else if (L.stance === 'drone') this.buildDrone(L);
     else if (L.stance === 'vehicle') this.buildVehicle(L);
     else this.buildWalker(animal, L);
+    this.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) o.userData.creature = true; });
   }
 
   private buildDrone(L: LookDef): void {
@@ -220,6 +234,20 @@ export class CreatureView {
     }
     g.add(this.neck);
 
+    if (L.feature === 'eyes') { // glowing red eyes (visible from afar, not dimmed by fog) and long arms
+      for (const sx of [-1, 1]) {
+        const eye = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.05), EYE_MAT);
+        eye.position.set(sx * hw * 0.28, headY + hh * 0.1, -hl * 0.3 - hl * 0.52);
+        eye.userData.hot = true;
+        this.neck.add(eye);
+        const glow = new THREE.Sprite(glowMaterial());
+        glow.scale.set(0.55, 0.55, 1);
+        glow.position.copy(eye.position).add(new THREE.Vector3(0, 0, -0.04));
+        this.neck.add(glow);
+        const arm = box(0.1, 1.0, 0.1, C.dark); arm.position.set(sx * (bw / 2 + 0.08), bodyCY - bh * 0.2, -bl * 0.1); arm.rotation.x = -0.25;
+        g.add(arm);
+      }
+    }
     if (L.feature === 'arms') {
       const armLen = bh * 0.6;
       for (const sx of [-1, 1]) {

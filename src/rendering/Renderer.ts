@@ -6,6 +6,8 @@ export interface Renderer {
   resize(): void;
   render(game: Game): void;
   aspect(): number;
+  /** Renderers that own the frame loop (WebXR) take over it. Returns true if the loop was started. */
+  runLoop?(cb: (now: number) => void): boolean;
   /** Renders and captures the current view as a JPEG blob. */
   capture(game: Game): Promise<Blob | null>;
 }

@@ -1,13 +1,13 @@
-import { Equipment } from './Equipment';
+import { Equipment, Overlay, ZoomStep } from './Equipment';
 
 /** Target-seeking rocket launcher (abstract game model). Only available on levels that list it. */
 export class Launcher implements Equipment {
   readonly id = 'launcher';
   readonly name = 'Seeker rockets';
   readonly kind = 'launcher' as const;
+  readonly zoomSteps: ZoomStep[] = [{ zoom: 1, tech: 'launcher' }, { zoom: 4, tech: 'launcher.zoom4' }];
   readonly minZoom = 1;
   readonly maxZoom = 4;
-  readonly overlay = 'launcher' as const;
 
   swayDeg = 0.3;
   range = 400;          // m, lock range
@@ -20,6 +20,8 @@ export class Launcher implements Equipment {
   ammo = 3;
   private nextShotAt = 0;
   private reloadUntil = 0;
+
+  overlayAt(): Overlay { return 'launcher'; }
 
   get reloading(): boolean { return this.ammo === 0; }
 

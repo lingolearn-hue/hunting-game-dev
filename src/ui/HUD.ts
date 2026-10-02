@@ -2,27 +2,48 @@ import { Game, EquipId } from '../game/Game';
 import { rangeFinder } from '../game/Ranging';
 import { yawOf } from '../util/quat';
 import { BinocularsOverlay } from './BinocularsOverlay';
+import { MiniMap } from './MiniMap';
+import { BUILD_DEFS } from '../game/Buildings';
+import { BuildKind } from '../equipment/MultiTool';
 
-const LABEL: Record<string, string> = { camera: 'CAMERA', binoculars: 'BINOCULARS', weapon: 'RIFLE', launcher: 'ROCKETS' };
-const BTN: Record<EquipId, string> = { binoculars: 'BINOCULARS', camera: 'CAMERA', rifle: 'RIFLE', launcher: 'ROCKETS' };
+const LABEL: Record<string, string> = { camera: 'CAMERA', binoculars: 'BINOCULARS', weapon: 'RIFLE', launcher: 'ROCKETS', torch: 'TORCH', multitool: 'MULTITOOL' };
+const BTN: Record<EquipId, string> = { camera: 'CAM', binoculars: 'BINO', rifle: 'RIFLE', launcher: 'ROCKET', torch: 'TORCH', multitool: 'TOOL' };
+const KIND_OF: Record<EquipId, string> = { camera: 'camera', binoculars: 'binoculars', rifle: 'weapon', launcher: 'launcher', torch: 'torch', multitool: 'multitool' };
+const BUILD_ORDER: BuildKind[] = ['campfire', 'wall', 'tower', 'cannon', 'cannon2'];
 
-/** Minimal HUD: time/equipment, zoom, crosshair or scope overlay, equipment row, feedback. */
+export interface HudActions {
+  equip: (id: EquipId) => void; menu: () => void; crouch: () => void; trigger: () => void;
+  zoomIn: () => void; zoomOut: () => void; thermal: () => void; build: (k: BuildKind | 'remove' | null) => void;
+}
+
+/** HUD: time/tool, coins, minimap, zoom, crosshair or scope overlay, tool row, build panel, feedback. */
 export class HUD {
   private time = document.createElement('span');
   private info = document.createElement('span');
+  private stats = document.createElement('div');
+  private coinPop = document.createElement('div');
+  private coinTimer = 0;
   private flashEl = document.createElement('div');
   private toastEl = document.createElement('div');
   private overlay = document.createElement('div');
+  private xr = false;
   private cross = document.createElement('div');
   private crouchBtn = document.createElement('button');
   private triggerBtn = document.createElement('button');
+  private thermalBtn = document.createElement('button');
   private windArrow = document.createElement('span');
   private windText = document.createElement('span');
   private threatEl = document.createElement('div');
   private lockEl = document.createElement('div');
   private lockText = document.createElement('div');
+  private bottom = document.createElement('div');
+  private buildPanel = document.createElement('div');
+  private buildBtns = new Map<string, HTMLButtonElement>();
   private eqBtns = new Map<EquipId, HTMLButtonElement>();
+  private toolKey = '';
+  private buildKey = '';
   private bino: BinocularsOverlay;
+  private map: MiniMap;
   private rangeT = 0;
   private rangeText = '---';
   private toastTimer = 0;
@@ -31,19 +52,15 @@ export class HUD {
   private acc = 0;
   private fps = 0;
 
-  constructor(
-    root: HTMLElement, private game: Game,
-    actions: {
-      equip: (id: EquipId) => void; menu: () => void; crouch: () => void; trigger: () => void;
-      zoomIn: () => void; zoomOut: () => void;
-    },
-    opts: { equipment: EquipId[]; ar?: boolean },
-  ) {
+  constructor(root: HTMLElement, private game: Game, private actions: HudActions, opts: { ar?: boolean; xr?: boolean }) {
+    this.xr = !!opts.xr;
     const top = document.createElement('div'); top.className = 'top';
     const wind = document.createElement('span');
     this.windArrow.textContent = '↑'; this.windArrow.style.cssText = 'display:inline-block;transition:transform .3s';
     wind.append('WIND ', this.windArrow, this.windText);
     top.append(this.time, wind, this.info);
+    this.stats.className = 'stats';
+    this.coinPop.className = 'coinpop';
     this.threatEl.className = 'threat';
     this.cross.className = 'cross';
     this.overlay.className = 'overlay';
@@ -53,30 +70,73 @@ export class HUD {
     const mk = (label: string, fn: () => void) => {
       const b = document.createElement('button'); b.textContent = label; b.onclick = fn; return b;
     };
-    const bottom = document.createElement('div'); bottom.className = 'bottom';
-    for (const id of opts.equipment) {
-      const b = mk(BTN[id], () => actions.equip(id));
-      this.eqBtns.set(id, b);
-      bottom.append(b);
-    }
-    bottom.append(mk('MENU', actions.menu));
+    this.bottom.className = 'bottom';
 
     this.crouchBtn.className = 'crouch';
     this.crouchBtn.onclick = actions.crouch;
-    if (opts.ar) this.crouchBtn.style.display = 'none'; // the phone is the view in AR: no walking
+    if (opts.ar || opts.xr) this.crouchBtn.style.display = 'none'; // the phone is the view in AR: no walking
     this.triggerBtn.className = 'trigger';
     this.triggerBtn.onpointerdown = (e) => { e.preventDefault(); actions.trigger(); };
     const zoom = document.createElement('div'); zoom.className = 'zoomcol';
     zoom.append(mk('+', actions.zoomIn), mk('−', actions.zoomOut));
+    if (opts.xr) zoom.style.display = 'none'; // the real camera cannot zoom in WebXR
+    this.thermalBtn.className = 'thermalbtn'; this.thermalBtn.textContent = 'THERMAL';
+    this.thermalBtn.onclick = actions.thermal; this.thermalBtn.style.display = 'none';
+    this.buildPanel.className = 'buildpanel'; this.buildPanel.style.display = 'none';
 
     this.lockEl.className = 'lock'; this.lockText.className = 'locktext';
     this.bino = new BinocularsOverlay(root);
-    root.append(this.overlay, this.flashEl, top, this.cross, this.toastEl, this.threatEl, this.lockEl, this.lockText, zoom, this.crouchBtn, this.triggerBtn, bottom);
+    this.map = new MiniMap(root);
+    root.append(this.overlay, this.flashEl, top, this.stats, this.coinPop, this.cross, this.toastEl, this.threatEl, this.lockEl, this.lockText, zoom,
+      this.thermalBtn, this.buildPanel, this.crouchBtn, this.triggerBtn, this.bottom);
     if (new URLSearchParams(location.search).has('debug')) {
       this.dbg = document.createElement('div');
       this.dbg.className = 'dbg';
       root.append(this.dbg);
     }
+    this.syncTools();
+  }
+
+  /** Rebuilds the tool row when tools were unlocked. */
+  private syncTools(): void {
+    const tools = this.game.tools();
+    const key = tools.join(',');
+    if (key === this.toolKey) return;
+    this.toolKey = key;
+    this.bottom.replaceChildren();
+    this.eqBtns.clear();
+    for (const id of tools) {
+      const b = document.createElement('button'); b.textContent = BTN[id]; b.onclick = () => this.actions.equip(id);
+      this.eqBtns.set(id, b); this.bottom.append(b);
+    }
+    const menu = document.createElement('button'); menu.textContent = 'MENU'; menu.onclick = this.actions.menu;
+    this.bottom.append(menu);
+  }
+
+  /** Multitool panel: gather mode and the unlocked structures. */
+  private syncBuildPanel(): void {
+    const g = this.game;
+    const kinds = BUILD_ORDER.filter((k) => g.has(BUILD_DEFS[k].tech));
+    const key = kinds.join(',');
+    if (key === this.buildKey) return;
+    this.buildKey = key;
+    this.buildPanel.replaceChildren();
+    this.buildBtns.clear();
+    const add = (id: string, label: string, kind: BuildKind | 'remove' | null) => {
+      const b = document.createElement('button'); b.textContent = label; b.onclick = () => this.actions.build(kind);
+      this.buildBtns.set(id, b); this.buildPanel.append(b);
+    };
+    add('gather', 'GATHER', null);
+    for (const k of kinds) add(k, `${BUILD_DEFS[k].name.toUpperCase()}\n${BUILD_DEFS[k].wood}w ${BUILD_DEFS[k].stone}s`, k);
+    if (kinds.length) add('remove', 'REMOVE', 'remove');
+  }
+
+  /** Short "+N coins" notice under the coin counter. */
+  coin(n: number, why: string): void {
+    this.coinPop.textContent = `+${n} coins · ${why}`;
+    this.coinPop.style.opacity = '1';
+    clearTimeout(this.coinTimer);
+    this.coinTimer = window.setTimeout(() => { this.coinPop.style.opacity = '0'; }, 2200);
   }
 
   flash(strength = 0.9, ms = 350, color = '#fff'): void {
@@ -104,16 +164,23 @@ export class HUD {
     this.frames++; this.acc += dt;
     if (this.acc >= 0.5) { this.fps = Math.round(this.frames / this.acc); this.frames = 0; this.acc = 0; }
     const g = this.game, cur = g.current;
+    this.syncTools();
     const t = g.sim.timeOfDay;
     const hh = Math.floor(t), mm = Math.floor((t - hh) * 60);
     const ammo = cur.kind === 'weapon' ? ` · ${g.rifle.reloading ? 'reloading' : `${g.rifle.ammo}/${g.rifle.magazine}`}`
       : cur.kind === 'launcher' ? ` · ${g.launcher.reloading ? 'reloading' : `${g.launcher.ammo}/${g.launcher.magazine}`}` : '';
     this.time.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${LABEL[cur.kind]}${ammo}`;
+    const pr = g.progress;
+    this.stats.textContent = `COINS ${pr.coins}` + (g.has('multitool') ? ` · WOOD ${pr.wood} · STONE ${pr.stone}` : '');
 
     if (this.crouchBtn.style.display !== 'none') this.crouchBtn.textContent = g.player.crouching ? 'STAND' : 'CROUCH';
-    this.triggerBtn.textContent = cur.kind === 'weapon' ? 'FIRE' : cur.kind === 'launcher' ? 'LAUNCH' : 'PHOTO';
-    this.triggerBtn.style.display = cur.kind === 'binoculars' ? 'none' : '';
-    const isBino = cur.overlay === 'binoculars';
+    this.triggerBtn.textContent = cur.kind === 'weapon' ? 'FIRE' : cur.kind === 'launcher' ? 'LAUNCH' : cur.kind === 'multitool' ? 'USE' : 'PHOTO';
+    this.triggerBtn.style.display = cur.kind === 'binoculars' || cur.kind === 'torch' ? 'none' : '';
+
+    // Overlay at the current zoom (rifle: iron sight at 1x, scoped above)
+    const ov = g.currentOverlay();
+    const overlayKind = this.xr && ov !== 'launcher' ? 'none' : ov; // no scope/binocular masks over the XR view
+    const isBino = overlayKind === 'binoculars';
     this.bino.show(isBino);
     if (isBino) {
       this.rangeT -= dt;
@@ -124,15 +191,31 @@ export class HUD {
       }
       this.bino.update(g.player.zoom, this.rangeText);
     }
-    const cls = cur.overlay === 'none' || isBino ? 'overlay' : `overlay ${cur.overlay}`;
+    const cls = overlayKind === 'none' || isBino ? 'overlay' : `overlay ${overlayKind}`;
     if (this.overlay.className !== cls) {
       this.overlay.className = cls;
-      this.cross.style.display = cur.overlay === 'none' || cur.overlay === 'launcher' ? '' : 'none';
+      this.cross.style.display = overlayKind === 'none' || overlayKind === 'launcher' ? '' : 'none';
     }
-    for (const [id, b] of this.eqBtns) {
-      const on = (id === 'rifle' && cur.kind === 'weapon') || (id === 'camera' && cur.kind === 'camera') || (id === 'binoculars' && cur.kind === 'binoculars');
-      b.classList.toggle('active', on);
+    for (const [id, b] of this.eqBtns) b.classList.toggle('active', cur.kind === KIND_OF[id]);
+
+    // Thermal button (tech) and multitool build panel
+    const th = g.thermalAvailable();
+    this.thermalBtn.style.display = th ? '' : 'none';
+    this.thermalBtn.classList.toggle('active', th && g.thermalOn);
+    const mt = cur.kind === 'multitool';
+    this.buildPanel.style.display = mt ? 'flex' : 'none';
+    if (mt) {
+      this.syncBuildPanel();
+      const sel = g.multitool.buildKind ?? 'gather';
+      for (const [id, b] of this.buildBtns) b.classList.toggle('active', id === sel);
+      const k = g.multitool.buildKind;
+      this.lockText.style.display = 'block'; this.lockText.style.color = '#fff';
+      this.lockText.textContent = k === null ? 'GATHER · aim at a tree, rock or carcass'
+        : k === 'remove' ? 'REMOVE · aim at a structure (50% back)'
+        : `BUILD ${BUILD_DEFS[k].name.toUpperCase()} · ${BUILD_DEFS[k].wood} wood, ${BUILD_DEFS[k].stone} stone`;
     }
+
+    this.map.update(g, dt);
 
     // Wind: arrow shows where the wind blows toward, relative to the view (scent is carried that way)
     const yaw = yawOf(g.player.orientation), w = g.sim.wind;
@@ -142,13 +225,13 @@ export class HUD {
 
     // Predator warning
     const px = g.player.position.x, pz = g.player.position.z;
-    const th = g.sim.animals.threat(px, pz);
-    if (th) {
-      const dx = th.animal.position.x - px, dz = th.animal.position.z - pz;
+    const thr = g.sim.animals.threat(px, pz);
+    if (thr) {
+      const dx = thr.animal.position.x - px, dz = thr.animal.position.z - pz;
       const rel = Math.atan2(dx * Math.cos(yaw) + dz * -Math.sin(yaw), dx * -Math.sin(yaw) + dz * -Math.cos(yaw));
       const arrow = Math.abs(rel) > 2.4 ? '▼' : rel < -0.5 ? '◀' : rel > 0.5 ? '▶' : '▲';
-      const what = th.animal.state === 'ALERT' ? 'ROARS' : th.animal.state === 'STALKING' ? 'STALKING' : 'CHARGING';
-      this.threatEl.textContent = `⚠ ${th.animal.species.name.toUpperCase()} ${what} · ${Math.round(th.dist)} m ${arrow}`;
+      const what = thr.animal.state === 'ALERT' ? 'ROARS' : thr.animal.state === 'STALKING' ? 'STALKING' : 'CHARGING';
+      this.threatEl.textContent = `⚠ ${thr.animal.species.name.toUpperCase()} ${what} · ${Math.round(thr.dist)} m ${arrow}`;
       this.threatEl.style.display = 'block';
     } else {
       this.threatEl.style.display = 'none';
@@ -171,13 +254,12 @@ export class HUD {
       this.lockText.style.color = lk.state === 'locked' ? '#ff5a4a' : '#fff';
     } else {
       this.lockEl.style.display = 'none';
-      this.lockText.style.display = 'none';
+      if (!mt) this.lockText.style.display = 'none';
     }
 
     const z = g.player.zoom;
-    const digital = cur.kind === 'camera' && z > g.camera.opticalZoomMax + 0.001 ? ' digital' : '';
     const deaths = g.sim.deaths > 0 ? ` · ☠${g.sim.deaths}` : '';
-    this.info.textContent = `${z.toFixed(1)}x${digital}${deaths} · ${sensor ? 'sensor' : 'mouse/touch'} · ${this.fps} fps`;
+    this.info.textContent = `${z.toFixed(0)}x${deaths} · ${sensor ? 'sensor' : 'mouse/touch'} · ${this.fps} fps`;
     if (this.dbg) {
       const n = g.sim.animals.nearest(g.player.position.x, g.player.position.z);
       this.dbg.textContent = n

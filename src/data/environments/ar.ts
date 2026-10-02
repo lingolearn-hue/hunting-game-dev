@@ -22,9 +22,7 @@ export const AR: LevelDef = {
     trunk: 0, leaf: 0, bush: 0, rock: 0,
     sun: 0xffffff, sunIntensity: 1.3, hemiSky: 0xffffff, hemiGround: 0x888888,
   },
-  spawns: [
-    { species: 'arscout', count: 1, minDist: 35, maxDist: 50, front: true },
-    { species: 'arscout', count: 5, minDist: 35, maxDist: 90 },
-    { species: 'arheavy', count: 2, minDist: 60, maxDist: 110 },
-  ],
+  // A continuous stream of drones appears above the horizon in the viewing direction and crosses overhead.
+  stream: { species: ['arscout', 'arheavy'], every: [4, 9], max: 6 },
+  spawns: [],
 };

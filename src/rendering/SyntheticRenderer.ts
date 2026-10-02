@@ -6,6 +6,8 @@ import { WORLD_SIZE } from '../game/World';
 import { Prop } from '../data/environments/Level';
 import { CreatureView } from './CreatureView';
 import { Rocket, Explosion } from '../game/Rocket';
+import { SkySystem } from './Sky';
+import { BuildingViews } from './BuildingViews';
 
 const TERRAIN_MARGIN = 120;
 
@@ -26,9 +28,14 @@ export class SyntheticRenderer implements Renderer {
   private hemi = new THREE.HemisphereLight(0xbfd9ff, 0x3a4a2a, 0.9);
   private palette!: Game['level']['palette'];
   private moon = new THREE.DirectionalLight(0x8898c8, 0);
-  private skyHour = -1;
-  private tmpA = new THREE.Color();
-  private tmpB = new THREE.Color();
+  private sky: SkySystem | null = null;
+  private bViews: BuildingViews | null = null;
+  private propInst = new Map<Prop, Array<{ m: THREE.InstancedMesh; i: number }>>();
+  private hiddenVersion = 0;
+  private thermal = false;
+  private thermalSaved = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
+  private hotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+  private coldMat = new THREE.MeshBasicMaterial({ color: 0x1b2128 });
 
   init(container: HTMLElement, game: Game): void {
     this.container = container;
@@ -49,7 +56,10 @@ export class SyntheticRenderer implements Renderer {
     this.sun.position.set(60, 90, 30);
 
     if (!this.arMode) {
-      this.applySky(game.sim.timeOfDay);
+      this.sky = new SkySystem(game.level.seed);
+      this.scene.add(this.sky.group);
+      this.scene.background = new THREE.Color(P.sky);
+      this.bViews = new BuildingViews(this.scene);
       this.buildTerrain(game);
       this.buildWater(game);
       this.buildProps(game);
@@ -71,6 +81,11 @@ export class SyntheticRenderer implements Renderer {
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     const cull = this.scene.fog ? (this.scene.fog as THREE.Fog).far + 5 : 400;
+    // Remove views of animals that are gone (respawn, harvested, dissolved at dawn)
+    if (this.views.size > game.sim.animals.list.length) {
+      const ids = new Set(game.sim.animals.list.map((a) => a.id));
+      for (const [id, v] of this.views) if (!ids.has(id)) { this.scene.remove(v.group); this.views.delete(id); }
+    }
     for (const a of game.sim.animals.list) {
       let v = this.views.get(a.id);
       if (!v) { v = new CreatureView(a); this.scene.add(v.group); this.views.set(a.id, v); }
@@ -80,9 +95,56 @@ export class SyntheticRenderer implements Renderer {
       if (near) v.update(a, dt);
     }
     this.syncEffects(game);
-    if (!this.arMode) { this.syncBlood(game); this.applySky(game.sim.timeOfDay); }
     this.view.update(game.player);
+    if (!this.arMode) {
+      this.syncBlood(game);
+      this.syncRemovedProps(game);
+      this.sky!.update(game.sim.timeOfDay, this.view.camera.position, dt, game.sim.wind, {
+        sun: this.sun, moon: this.moon, hemi: this.hemi, scene: this.scene, palette: this.palette,
+      });
+      this.bViews!.update(game, dt, this.view.camera);
+      this.applyThermal(game.thermalOn && game.thermalAvailable());
+    }
     this.gl.render(this.scene, this.view.camera);
+  }
+
+  /** Hides trees and rocks that were cut down or mined. */
+  private syncRemovedProps(game: Game): void {
+    if (game.world.removedVersion === this.hiddenVersion) return;
+    this.hiddenVersion = game.world.removedVersion;
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (const [p, insts] of this.propInst) {
+      if (!p.removed) continue;
+      for (const { m, i } of insts) { m.setMatrixAt(i, zero); m.instanceMatrix.needsUpdate = true; }
+      this.propInst.delete(p);
+    }
+  }
+
+  /**
+   * Thermal view: creatures (and rockets) glow white, everything else is dark.
+   * Materials are swapped once per mesh and restored when the view is switched off.
+   */
+  private applyThermal(on: boolean): void {
+    if (on !== this.thermal) {
+      this.thermal = on;
+      this.sky!.group.visible = !on;
+      this.gl.domElement.style.filter = on ? 'contrast(1.35) brightness(1.15)' : '';
+      if (!on) {
+        for (const [m, mat] of this.thermalSaved) m.material = mat;
+        this.thermalSaved.clear();
+        (this.scene.fog as THREE.Fog).color.setHex(0x000000);
+      }
+    }
+    if (!on) return;
+    (this.scene.fog as THREE.Fog).color.setHex(0x0a0d10);
+    (this.scene.background as THREE.Color).setHex(0x0a0d10);
+    this.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh || this.thermalSaved.has(m)) return;
+      if (m.material instanceof THREE.MeshBasicMaterial && (m.material as THREE.MeshBasicMaterial).fog === false) return; // flames, eyes, effects keep their look
+      this.thermalSaved.set(m, m.material);
+      m.material = m.userData.creature || m.userData.hot ? this.hotMat : this.coldMat;
+    });
   }
 
   /** Blood trail of wounded animals. */
@@ -110,6 +172,7 @@ export class SyntheticRenderer implements Renderer {
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.6, 8), new THREE.MeshBasicMaterial({ color: 0xffa030 }));
     flame.position.y = -0.7; flame.rotation.x = Math.PI;
     g.add(body, nose, flame);
+    g.traverse((o) => { o.userData.hot = true; }); // rockets glow in thermal view
     return g;
   }
 
@@ -165,36 +228,6 @@ export class SyntheticRenderer implements Renderer {
       (m.material as THREE.Material).dispose();
       this.blastViews.delete(e);
     }
-  }
-
-  /** Sun/moon, sky, fog and light levels from the time of day. */
-  private applySky(hour: number): void {
-    if (Math.abs(hour - this.skyHour) < 0.004) return;
-    this.skyHour = hour;
-    const P = this.palette;
-    const ang = ((hour - 6) / 12) * Math.PI;      // 0 = sunrise (east, +X), PI = sunset (west)
-    const elev = Math.sin(ang);
-    const sx = Math.cos(ang) * 100, sy = elev * 100;
-    const smooth = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-    const day = smooth(-0.12, 0.25, elev);
-    const twilight = 1 - Math.min(1, Math.abs(elev) / 0.3);
-
-    // Sky / fog colour: night blue -> day, orange near the horizon.
-    const sky = this.tmpA.setHex(0x0b1226).lerp(this.tmpB.setHex(P.sky), day);
-    if (elev > -0.15) sky.lerp(this.tmpB.setHex(0xf0905a), 0.55 * twilight);
-    (this.scene.background as THREE.Color).copy(sky);
-    const fog = this.scene.fog as THREE.Fog;
-    fog.color.copy(sky);
-    fog.near = 15 + (P.fogNear - 15) * day;
-    fog.far = 90 + (P.fogFar - 90) * day;
-
-    // Sun (day) and moon (night)
-    this.sun.position.set(sx, Math.max(sy, 5), 30);
-    this.sun.intensity = P.sunIntensity * Math.min(1, Math.max(0, elev * 2.5));
-    this.sun.color.setHex(P.sun).lerp(this.tmpB.setHex(0xff8a4a), 0.6 * twilight);
-    this.moon.position.set(-sx, Math.max(-sy, 5), -30);
-    this.moon.intensity = 0.35 * (1 - day);
-    this.hemi.intensity = 0.3 + 0.6 * day;
   }
 
   aspect(): number {
@@ -256,6 +289,7 @@ export class SyntheticRenderer implements Renderer {
         mesh.setMatrixAt(i, dummy.matrix);
       });
       mesh.instanceMatrix.needsUpdate = true;
+      list.forEach((p, i) => { const a = this.propInst.get(p) ?? []; a.push({ m: mesh, i }); this.propInst.set(p, a); });
       this.scene.add(mesh);
     };
 

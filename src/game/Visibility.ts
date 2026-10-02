@@ -16,6 +16,7 @@ export function isBlocked(world: World, from: V3, to: V3): boolean {
 
   // Props as vertical cylinders: [radius, y0, y1] in units of prop scale.
   for (const p of world.props) {
+    if (p.removed) continue;
     const t = Math.max(0, Math.min(1, ((p.x - from[0]) * dx + (p.z - from[2]) * dz) / len2));
     const cx = from[0] + dx * t, cz = from[2] + dz * t;
     const d = Math.hypot(p.x - cx, p.z - cz);

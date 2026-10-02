@@ -16,10 +16,12 @@
     font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
   #view { position: fixed; inset: 0; }
   #view canvas { display: block; width: 100%; height: 100%; position: relative; z-index: 1; }
+  #ui { position: fixed; inset: 0; pointer-events: none; }
   #hud { position: fixed; inset: 0; pointer-events: none; }
+  #menu, #gallery { pointer-events: auto; }
   #hud .top { position: absolute; top: env(safe-area-inset-top, 0); left: 12px; right: 12px; padding-top: 8px;
     display: flex; justify-content: space-between; font-size: 14px; text-shadow: 0 0 3px #000; }
-  #hud .dbg { position: absolute; top: calc(env(safe-area-inset-top, 0) + 34px); left: 12px; font-size: 12px; opacity: .8; text-shadow: 0 0 3px #000; }
+  #hud .dbg { position: absolute; top: calc(env(safe-area-inset-top, 0) + 70px); left: 12px; font-size: 12px; opacity: .8; text-shadow: 0 0 3px #000; }
   #hud .flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
   #hud .toast { position: absolute; top: 30%; left: 12px; right: 12px; text-align: center; font-size: 22px;
     text-shadow: 0 0 4px #000; opacity: 0; transition: opacity .3s; }
@@ -40,6 +42,10 @@
     linear-gradient(#000, #000) center / 2px 62vmin no-repeat,
     linear-gradient(#000, #000) center / 62vmin 2px no-repeat,
     radial-gradient(circle at 50% 50%, transparent 0, transparent 34vmin, #000 35vmin); }
+  /* iron sight: rear ring with a front post */
+  #hud .overlay.iron { background:
+    linear-gradient(#000, #000) 50% 38% / 2px 5vmin no-repeat,
+    radial-gradient(circle at 50% 50%, transparent 0, transparent 11vmin, rgba(0,0,0,.9) 11.3vmin, rgba(0,0,0,.9) 12.3vmin, transparent 12.6vmin); }
   #hud .overlay.launcher { background: radial-gradient(circle at 50% 50%, transparent 0, transparent 9vmin, rgba(255,255,255,.55) 9.2vmin, transparent 9.6vmin); }
   #hud .threat { position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 40px); text-align: center;
     font-size: 15px; font-weight: 700; color: #ff5a4a; text-shadow: 0 0 4px #000; display: none; }
@@ -50,6 +56,18 @@
   #hud .locktext { position: absolute; left: 0; right: 0; top: 58%; text-align: center; font-size: 14px; font-weight: 600;
     text-shadow: 0 0 4px #000; display: none; }
   #hud button.active { background: rgba(76,154,95,.75); }
+  /* coins, minimap, build panel, thermal */
+  #hud .stats { position: absolute; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 30px); font-size: 12px; font-weight: 600;
+    color: #ffd966; text-shadow: 0 0 3px #000; }
+  #hud .coinpop { position: absolute; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 48px); font-size: 12px; color: #ffe9a0;
+    text-shadow: 0 0 3px #000; opacity: 0; transition: opacity .4s; }
+  #hud canvas.map { position: absolute; right: 8px; top: calc(env(safe-area-inset-top, 0px) + 32px); border-radius: 50%;
+    background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.4); pointer-events: none; }
+  #hud .buildpanel { position: absolute; right: 8px; top: calc(env(safe-area-inset-top, 0px) + 158px); display: flex; flex-direction: column; gap: 4px; }
+  #hud .buildpanel button { font-size: 11px; padding: 6px 8px; white-space: pre-line; line-height: 1.2; min-width: 96px; }
+  #hud .thermalbtn { position: absolute; left: 12px; top: calc(env(safe-area-inset-top, 0px) + 70px); font-size: 12px; padding: 8px 10px; }
+  #hud .bottom { gap: 5px; }
+  #hud .bottom button { padding: 8px 8px; font-size: 11px; }
   #hud .zoomcol { position: absolute; right: 49px; bottom: calc(env(safe-area-inset-bottom, 0px) + 282px);
     display: flex; flex-direction: column; gap: 8px; }
   #hud .zoomcol button { width: 44px; height: 44px; padding: 0; border-radius: 50%; font-size: 22px; line-height: 1; }
@@ -79,6 +97,8 @@
     width: 84px; height: 84px; border-radius: 50%; padding: 0; font-size: 14px; font-weight: 600;
     background: rgba(200,60,50,.55); border-color: rgba(255,255,255,.7); touch-action: none; }
   @media (orientation: landscape) {
+    #hud .buildpanel { flex-direction: row; right: 132px; top: calc(env(safe-area-inset-top, 0px) + 32px); }
+    #hud .buildpanel button { min-width: 0; padding: 5px 7px; }
     #hud .crouch { left: 140px; bottom: calc(env(safe-area-inset-bottom, 0px) + 70px); }
     #hud .trigger { right: 140px; bottom: calc(env(safe-area-inset-bottom, 0px) + 70px); }
     #hud .zoomcol { right: 140px; bottom: calc(env(safe-area-inset-bottom, 0px) + 164px); flex-direction: row; }
@@ -92,6 +112,10 @@
   #start #modeBtn { font-size: 14px; padding: 8px 16px; background: #2c4a38; }
   #levels { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
   #levels small { display: block; font-size: 12px; opacity: .8; margin-top: 2px; }
+  .levelCard { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+  .levelTools { display: flex; gap: 6px; justify-content: center; align-items: center; }
+  #start .levelTools button { font-size: 11px; padding: 5px 9px; background: #2c4a38; border: 1px solid rgba(255,255,255,.25); }
+  .levelTools span { font-size: 11px; opacity: .75; flex: 1; }
   #start p { max-width: 420px; opacity: .8; font-size: 14px; margin: 0; }
   #start h1 { margin: 0; }
   /* Short screens (landscape phones): compact layout */
@@ -111,11 +135,11 @@
 </head>
 <body>
 <div id="view"></div>
-<div id="hud"></div>
+<div id="ui"><div id="hud"></div></div>
 <div id="start">
   <div class="startInner">
   <h1>Hunting Game</h1>
-  <p>Hold the phone upright and look around. Left stick walks, right stick looks, red button = photo/fire, CROUCH for stealth, +/- or pinch to zoom. Desktop: drag to look, WASD to walk, C to crouch, wheel to zoom, 1/2/3 to switch equipment, click/Space to use, R to recalibrate.</p>
+  <p>Hold the phone upright and look around. Left stick walks, right stick looks, red button = photo/fire, CROUCH for stealth, +/- or pinch to zoom. Desktop: drag to look, WASD to walk, C to crouch, wheel to zoom, 1-6 to switch tools, T = thermal, click/Space to use, R to recalibrate.</p>
   <button id="modeBtn"></button>
   <div id="levels"></div>
   <p id="startMsg"></p>

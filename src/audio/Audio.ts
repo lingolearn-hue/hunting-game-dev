@@ -255,6 +255,24 @@ export class AudioEngine {
     this.burst(this.reverb, 0.8, 0.6, 'lowpass', 2000);
   }
 
+  /** Multitool strike on a tree or rock. */
+  chop(stone: boolean): void {
+    if (!this.ctx || !this.enabled) return;
+    this.burst(this.master, 0.12, 0.5, 'lowpass', stone ? 2500 : 900);
+    this.tone(this.master, 'square', stone ? 900 : 220, stone ? 500 : 110, 0.1, 0.25);
+  }
+
+  build(): void {
+    if (!this.ctx || !this.enabled) return;
+    for (let i = 0; i < 3; i++) this.burst(this.master, 0.08, 0.4, 'lowpass', 1200, i * 0.12);
+  }
+
+  coin(): void {
+    if (!this.ctx || !this.enabled) return;
+    this.tone(this.master, 'sine', 1300, 1500, 0.08, 0.18);
+    this.tone(this.master, 'sine', 1900, 2100, 0.12, 0.18, 0.07);
+  }
+
   launch(): void {
     if (!this.ctx || !this.enabled) return;
     this.burst(this.master, 0.9, 0.5, 'bandpass', 1500, 0, 0.8);

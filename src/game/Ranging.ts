@@ -21,6 +21,7 @@ export function rangeFinder(game: Game, maxDist = 600): Range | null {
   const a2 = d[0] * d[0] + d[2] * d[2];
   if (a2 > 1e-9) {
     for (const pr of w.props) {
+      if (pr.removed) continue;
       const r = w.radiusOf(pr) || (pr.kind === 'bush' ? 0.8 * pr.scale : 0);
       if (r === 0) continue;
       const ex = o[0] - pr.x, ez = o[2] - pr.z;

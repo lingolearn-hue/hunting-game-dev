@@ -9,15 +9,16 @@ export class JournalView {
   constructor(private journal: FieldJournal) {
     this.root.id = 'gallery'; // shares the gallery styling
     this.root.style.display = 'none';
-    document.body.append(this.root);
+    (document.getElementById('ui') ?? document.body).append(this.root);
   }
 
   open(): void {
     const r = this.root;
     r.style.display = 'block';
-    const found = SPECIES_LIST.filter((s) => this.journal.entries.has(s.id)).length;
+    const logged = SPECIES_LIST.filter((s) => !s.monster);
+    const found = logged.filter((s) => this.journal.entries.has(s.id)).length;
     const head = document.createElement('div'); head.className = 'ghead';
-    const t = document.createElement('span'); t.textContent = `Field journal · ${found}/${SPECIES_LIST.length}`;
+    const t = document.createElement('span'); t.textContent = `Field journal · ${found}/${logged.length}`;
     const x = document.createElement('button'); x.textContent = 'CLOSE'; x.onclick = () => this.close();
     head.append(t, x);
     r.replaceChildren(head);

@@ -1,13 +1,13 @@
-import { Equipment } from './Equipment';
+import { Equipment, Overlay, ZoomStep } from './Equipment';
 
 /** Abstract hunting rifle (simplified model). Tunable parameters are plain properties. */
 export class Weapon implements Equipment {
   readonly id = 'rifle';
   readonly name = 'Hunting rifle';
   readonly kind = 'weapon' as const;
-  readonly minZoom = 2;
+  readonly zoomSteps: ZoomStep[] = [{ zoom: 1, tech: 'rifle' }, { zoom: 4, tech: 'rifle.scope4' }, { zoom: 8, tech: 'rifle.scope8' }];
+  readonly minZoom = 1;
   readonly maxZoom = 8;
-  readonly overlay = 'scope' as const;
 
   swayDeg = 0.3;          // aim stability (degrees, standing still)
   spreadDeg = 0.1;        // accuracy: random cone radius
@@ -21,6 +21,9 @@ export class Weapon implements Equipment {
   ammo = 5;
   private nextShotAt = 0;
   private reloadUntil = 0;
+
+  /** 1x is the iron sight; 4x and 8x are scoped. */
+  overlayAt(zoom: number): Overlay { return zoom < 1.5 ? 'iron' : 'scope'; }
 
   get reloading(): boolean { return this.ammo === 0; }
 

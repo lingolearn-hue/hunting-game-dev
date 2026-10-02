@@ -1,10 +1,10 @@
-Version: 11 — 2026-09-30
+Version: 13 — 2026-10-02
 
 # Hunting Game
 
-Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v09.md`.
+Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v11.md`.
 
-Status: photography + hunting + naturalist mode: 4 levels (Forest, Dinosaur Valley, Machine Range with seeker rockets, AR Camera Test with drones above the horizon), 480 m area, 27 species, predator attacks with respawn, wind and scent, tracking, day/night, positional audio, field journal, dual-stick controls, PWA/offline.
+Status: photography + hunting + naturalist mode, tech tree with coins per level (zoom steps, thermal view, torch, multitool, building), night monsters, respawn, sky with sun/moon/stars/clouds, minimap: 5 levels (Forest, Dinosaur Valley, Machine Range with seeker rockets, AR Camera Test, AR World with WebXR SLAM tracking on Android), 480 m area, predator attacks with respawn, wind and scent, tracking, day/night, positional audio, field journal, dual-stick controls, PWA/offline.
 
 Debug overlay: append `?debug` to the URL (nearest animal, state, awareness).
 
@@ -16,8 +16,8 @@ Debug overlay: append `?debug` to the URL (nearest animal, state, awareness).
 
 ## Controls
 
-- Phone: rotate to look, left stick walks, right stick looks, red button takes a photo / fires, CROUCH for stealth, +/- or pinch to zoom, BINOCULARS/CAMERA/RIFLE to switch equipment, MENU for calibrate, photos/harvest, fullscreen and level select.
-- Desktop: drag to look, WASD to walk, C to crouch, wheel or +/- to zoom, 1/2/3 to switch equipment, click or Space to use, R to recalibrate.
+- Phone: rotate to look, left stick walks, right stick looks, red button takes a photo / fires, CROUCH for stealth, +/- or pinch to step through the zoom levels, CAM/BINO/RIFLE/ROCKET/TORCH/TOOL to switch tools (new tools are bought in MENU > TECH TREE), MENU for calibrate, photos/harvest, journal, fullscreen and level select. Start screen: RESET and UNLOCK ALL per level.
+- Desktop: drag to look, WASD to walk, C to crouch, wheel or +/- to zoom, 1-6 to switch tools, T = thermal view, click or Space to use, R to recalibrate.
 
 ## Install / offline
 
@@ -25,4 +25,5 @@ Open the Pages URL once online, then use "Add to Home Screen" (iOS: Share > Add 
 
 ## To do
 
-- Ground vehicles on detected roads with correct scaling, as an additional AR map (plan in `spec/Spec_v09.md`, section 37).
+- Road detection (segmentation model) for ground vehicles on real roads. The AR World level already provides metric tracking and the ground plane (`spec/Spec_v10.md`, sections 37 and 38).
+- Test the AR World level on an Android phone (WebXR cannot be tested without a device).

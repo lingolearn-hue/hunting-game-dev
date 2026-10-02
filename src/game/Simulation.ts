@@ -3,6 +3,8 @@ import { Player, EYE_STAND, EYE_CROUCH, WALK_SPEED, CROUCH_SPEED } from './Playe
 import { AnimalManager } from './AnimalManager';
 import { RocketSystem } from './Rocket';
 import { Wind } from './Wind';
+import { BuildingSystem } from './Buildings';
+import { nightLevel } from './sky';
 import { SpeciesDef } from '../data/species/SpeciesDef';
 import { yawOf } from '../util/quat';
 
@@ -15,6 +17,7 @@ export class Simulation {
   readonly animals: AnimalManager;
   readonly rockets: RocketSystem;
   readonly wind: Wind;
+  readonly buildings: BuildingSystem;
   /** Number of times the player was killed by a predator. */
   deaths = 0;
   /** Predator attacks since last drained (for UI and audio). */
@@ -29,6 +32,7 @@ export class Simulation {
     this.animals = new AnimalManager(world, world.level);
     this.rockets = new RocketSystem(world, this.animals, rnd);
     this.wind = new Wind(world.level.seed, world.level.windSpeed ?? 3);
+    this.buildings = new BuildingSystem(world, this.animals, rnd);
   }
 
   update(dt: number): void {
@@ -45,7 +49,13 @@ export class Simulation {
     this.simTime += dt;
     this.wind.update(this.simTime);
     if (this.player.invuln > 0) this.player.invuln = Math.max(0, this.player.invuln - dt);
-    this.animals.update(dt, this.player, this.timeOfDay, this.wind);
+    this.player.fireSafe = this.buildings.nearCampfire(this.player.position.x, this.player.position.z, 7);
+    this.buildings.update(dt);
+    this.animals.update(dt, this.player, this.timeOfDay, this.wind, {
+      nightLevel: nightLevel(this.timeOfDay),
+      viewYaw: yawOf(this.player.orientation),
+      campfires: this.buildings.list.filter((b) => b.kind === 'campfire'),
+    });
     const hits = this.animals.drainAttacks();
     if (hits.length > 0) {
       this.deaths++;
@@ -64,9 +74,12 @@ export class Simulation {
   private respawn(): void {
     const p = this.player, w = this.world;
     const predators = this.animals.list.filter((a) => a.species.predator && a.state !== 'DEAD');
+    // The base campfire is the respawn point if there is one
+    const fire = this.buildings.list.find((b) => b.kind === 'campfire');
     const clearance = (x: number, z: number) => predators.reduce((m, a) => Math.min(m, Math.hypot(a.position.x - x, a.position.z - z)), Infinity);
-    let best = { x: 0, z: 0 }, bestC = clearance(0, 0);
-    if (bestC < 130) {
+    let best = fire ? { x: fire.x + 2.5, z: fire.z } : { x: 0, z: 0 };
+    let bestC = clearance(best.x, best.z);
+    if (bestC < (fire ? 40 : 130)) {
       for (const r of [60, 100, 140]) {
         for (let i = 0; i < 16; i++) {
           const x = Math.cos((i * Math.PI) / 8) * r, z = Math.sin((i * Math.PI) / 8) * r;
@@ -81,6 +94,7 @@ export class Simulation {
     p.eyeHeight = EYE_STAND;
     p.speed = 0;
     p.invuln = 6;
+    p.standY = null;
     p.position.y = w.heightAt(best.x, best.z) + p.eyeHeight;
     for (const a of predators) a.calmDown(40);
   }
@@ -88,6 +102,7 @@ export class Simulation {
   /** Walking/crouching relative to the view heading, with sliding collision. */
   private movePlayer(dt: number): void {
     const p = this.player, w = this.world;
+    if (p.external) return; // pose is driven by AR tracking
     let mx = p.move.x, my = p.move.y;
     const len = Math.hypot(mx, my);
     if (len > 1) { mx /= len; my /= len; }
@@ -110,6 +125,9 @@ export class Simulation {
 
     const target = p.crouching ? EYE_CROUCH : EYE_STAND;
     p.eyeHeight += (target - p.eyeHeight) * Math.min(1, dt * 8);
-    p.position.y = w.heightAt(p.position.x, p.position.z) + p.eyeHeight;
+    // Ground under the feet: terrain, or a tower platform (smooth climbing and dropping)
+    const ground = w.standHeight(p.position.x, p.position.z);
+    p.standY = p.standY === null ? ground : p.standY + (ground - p.standY) * Math.min(1, dt * 3);
+    p.position.y = p.standY + p.eyeHeight;
   }
 }

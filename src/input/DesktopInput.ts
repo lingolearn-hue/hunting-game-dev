@@ -10,9 +10,13 @@ export function attachDesktopInput(el: HTMLElement, game: Game): void {
     const k = 0.004 / game.player.zoom;
     game.player.addLook(-e.movementX * k, -e.movementY * k);
   });
+  let lastWheel = 0;
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
-    game.player.setZoom(game.player.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+    const now = performance.now();
+    if (now - lastWheel < 150) return; // one zoom step per wheel notch
+    lastWheel = now;
+    game.stepZoom(e.deltaY < 0 ? 1 : -1);
   }, { passive: false });
   window.addEventListener('keydown', (e) => { if (e.key === 'r' || e.key === 'R') game.calibrate(); });
 }

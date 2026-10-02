@@ -13,7 +13,7 @@ export class Gallery {
 
   constructor(private store: PhotoStore) {
     this.root.id = 'gallery';
-    document.body.append(this.root);
+    (document.getElementById('ui') ?? document.body).append(this.root);
   }
 
   async open(tab: 'photos' | 'harvest' = 'photos'): Promise<void> {

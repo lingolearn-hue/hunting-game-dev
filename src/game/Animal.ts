@@ -7,7 +7,7 @@ export interface Vec3 { x: number; y: number; z: number; }
 export interface CallEvent { species: SpeciesDef; x: number; y: number; z: number; }
 export interface AnimalContext {
   world: World;
-  player: { position: Vec3; speed: number; crouching: boolean; vulnerable: boolean };
+  player: { position: Vec3; speed: number; crouching: boolean; vulnerable: boolean; fireSafe: boolean };
   hour: number;
   rnd: () => number;
   events: CallEvent[];
@@ -17,6 +17,8 @@ export interface AnimalContext {
   wind: { x: number; z: number; speed: number };
   /** AR: patrol flyers stay within these elevation angles (deg) above the player's eye level. */
   elevation?: [number, number];
+  patrolRange?: [number, number];
+  wander?: number;
 }
 
 const LIMIT = WORLD_SIZE / 2 - 6;
@@ -51,6 +53,11 @@ export class Animal {
   private fleeHeading = 0;
   private vy = 0;           // fall speed of dead flyers
   private patrolAlt = 0;
+  /** Seconds since death (corpses are cleaned up after a while). */
+  deadFor = 0;
+  /** AR stream drone: flies a straight path to `target` and then expires. */
+  transit = false;
+  expired = false;
   private cooldown = 0;       // predators: time before hunting again
   private huntTime = 0;
   private windingUp = false;
@@ -115,6 +122,7 @@ export class Animal {
 
   update(dt: number, ctx: AnimalContext): void {
     if (this.state === 'DEAD') {
+      this.deadFor += dt;
       if (this.altitude > 0) { // dead flyers fall
         this.vy += 9.8 * dt;
         this.altitude = Math.max(0, this.altitude - this.vy * dt);
@@ -125,6 +133,7 @@ export class Animal {
       return;
     }
     this.callTimer(dt, ctx);
+    if (this.transit) { this.updateTransit(dt, ctx); return; }
     if (this.bleed > 0 && this.tickBleed(dt, ctx)) return;
     if (this.soar) { this.updateSoar(dt, ctx); return; }
 
@@ -134,15 +143,22 @@ export class Animal {
     const dist = Math.hypot(dx, dz);
     this.updateSight(dt, dist, ctx);
     this.updateAwareness(dt, dist, ctx);
+    if (this.species.monster) this.awareness = 1; // night monsters always know where the player is
     const desired = this.updateState(dt, dx, dz, ctx);
     const accel = this.state === 'FLEEING' || this.state === 'CHARGING' ? 15 : 6;
     this.speed += clamp(desired - this.speed, -accel * dt, accel * dt);
     this.move(dt, ctx);
     this.updateAltitude(dt);
-    if (ctx.elevation && this.species.flight?.kind === 'patrol') {
-      // AR: do not fly right over the player; pick a new waypoint when too close.
+    if (ctx.elevation && this.species.flight?.kind === 'patrol' && !this.transit) {
+      // AR: do not fly right over the player: drift away when very close, and pick a new waypoint.
+      const near = (ctx.patrolRange?.[0] ?? 40) * 0.5;
+      if (dist < Math.min(near, 5) && dist > 0.01) {
+        const k = (10 * dt) / dist;
+        this.position.x += (this.position.x - ctx.player.position.x) * k;
+        this.position.z += (this.position.z - ctx.player.position.z) * k;
+      }
       this.rerouteT -= dt;
-      if (dist < 20 && this.rerouteT <= 0 && this.state === 'MOVING') { this.pickWaypoint(ctx); this.rerouteT = 3; }
+      if (dist < (ctx.patrolRange?.[0] ?? 40) * 0.5 && this.rerouteT <= 0 && this.state === 'MOVING') { this.pickWaypoint(ctx); this.rerouteT = 3; }
       // Never below the horizon line (or too steeply overhead) as seen from the player.
       const rad = Math.PI / 180, base = ctx.player.position.y - this.groundY(ctx.world);
       const lo = dist * Math.tan(ctx.elevation[0] * rad) + base, hi = dist * Math.tan(ctx.elevation[1] * rad) + base;
@@ -181,6 +197,26 @@ export class Animal {
     this.speed = v;
     this.state = 'MOVING';
     this.altitude = s.base + 4 * Math.sin(s.t * 0.4);
+    this.position.y = this.groundY(ctx.world) + this.altitude;
+  }
+
+  /** Starts a straight flight to (x,z) at the given altitude (AR stream drones). */
+  startTransit(x: number, z: number, altitude: number): void {
+    this.transit = true;
+    this.target = { x, z };
+    this.altitude = altitude;
+    this.patrolAlt = altitude;
+    this.state = 'MOVING';
+  }
+
+  private updateTransit(dt: number, ctx: AnimalContext): void {
+    const t = this.target!;
+    const dx = t.x - this.position.x, dz = t.z - this.position.z, d = Math.hypot(dx, dz);
+    if (d < 6) { this.expired = true; return; }
+    this.direction = Math.atan2(-dx, -dz);
+    this.speed = this.species.walkSpeed * 0.6; // slowly crossing
+    this.position.x += (dx / d) * this.speed * dt;
+    this.position.z += (dz / d) * this.speed * dt;
     this.position.y = this.groundY(ctx.world) + this.altitude;
   }
 
@@ -289,6 +325,10 @@ export class Animal {
         if (Math.abs(this.position.x) > LIMIT - 14 || Math.abs(this.position.z) > LIMIT - 14) {
           this.fleeHeading = Math.atan2(this.position.x, this.position.z);
         }
+        // Beyond the level's wander radius (small AR worlds): turn back toward the center.
+        if (ctx.wander && Math.hypot(this.position.x, this.position.z) > ctx.wander) {
+          this.fleeHeading = Math.atan2(this.position.x, this.position.z);
+        }
         this.direction += clamp(wrap(this.fleeHeading - this.direction), -6 * dt, 6 * dt);
         if (this.timer <= 0) {
           this.awareness = 0.3;
@@ -316,6 +356,7 @@ export class Animal {
       return true;
     }
     if (this.health <= this.maxHealth * 0.7) this.bleed = Math.max(this.bleed, this.maxHealth * 0.012); // wounded: bleeds out slowly
+    if (this.transit) { this.awareness = 1; return false; }
     const pr = this.species.predator;
     if (pr && this.health > this.maxHealth * pr.fleeBelow) { // enraged predator keeps attacking
       this.awareness = 1;
@@ -334,14 +375,16 @@ export class Animal {
     const pr = this.species.predator!;
     this.cooldown = Math.max(0, this.cooldown - dt);
     const face = Math.atan2(-dx, -dz);
-    const canHunt = ctx.player.vulnerable;
+    const canHunt = ctx.player.vulnerable && !(this.species.monster && ctx.player.fireSafe);
+    // Reach is 3D: a player on a tower is out of reach of ground monsters.
+    const dy = ctx.player.position.y - (this.position.y + this.species.bounds.height * 0.5);
 
     if (this.state === 'STALKING' || this.state === 'CHARGING') {
       const charging = this.state === 'CHARGING', turn = (charging ? 3 : 2) * dt;
       this.direction += clamp(wrap(face - this.direction), -turn, turn);
       this.huntTime += dt;
       if (!canHunt) { this.calmDown(pr.cooldown * 0.5); return 0; }
-      if (dist <= pr.attackRange) { ctx.attacks.push(this); this.calmDown(pr.cooldown); return 0; }
+      if (Math.hypot(dist, dy) <= pr.attackRange) { ctx.attacks.push(this); this.calmDown(pr.cooldown); return 0; }
       if (!charging) {
         if (dist <= pr.chargeRange || this.awareness >= 1) { this.set('CHARGING', 0); this.huntTime = 0; return pr.chargeSpeed; }
         if (this.awareness < 0.15 || dist > pr.maxRange * 1.3) { this.calmDown(pr.cooldown * 0.5); return 0; }
@@ -417,7 +460,7 @@ export class Animal {
       if (Math.abs(x) > LIMIT || Math.abs(z) > LIMIT) continue;
       if (ctx.world.heightAt(x, z) < ctx.world.waterLevel + 0.3) continue;
       // Stay near the play area: never wander farther out than 90 m (or the current radius).
-      if (Math.hypot(x, z) > Math.max(WANDER, Math.hypot(this.position.x, this.position.z))) continue;
+      if (Math.hypot(x, z) > Math.max(ctx.wander ?? WANDER, Math.hypot(this.position.x, this.position.z))) continue;
       this.target = { x, z };
       this.set('MOVING', 40);
       return;
@@ -433,7 +476,8 @@ export class Animal {
       // When close to the player, head outward instead of across.
       const here = Math.hypot(this.position.x - p.x, this.position.z - p.z);
       const out = Math.atan2(this.position.z - p.z, this.position.x - p.x);
-      const a = here < 45 ? out + (ctx.rnd() - 0.5) * 0.8 : ctx.rnd() * Math.PI * 2, d = 40 + ctx.rnd() * 70;
+      const pr = ctx.patrolRange ?? [40, 110];
+      const a = here < pr[0] + 5 ? out + (ctx.rnd() - 0.5) * 0.8 : ctx.rnd() * Math.PI * 2, d = pr[0] + ctx.rnd() * (pr[1] - pr[0]);
       const x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
       const elev = (el[0] + 3 + ctx.rnd() * Math.max(1, el[1] - el[0] - 10)) * rad;
       this.patrolAlt = d * Math.tan(elev) + (p.y - ctx.world.heightAt(x, z));
@@ -445,7 +489,7 @@ export class Animal {
       const a = ctx.rnd() * Math.PI * 2, d = 30 + ctx.rnd() * 90;
       const x = this.position.x + Math.cos(a) * d, z = this.position.z + Math.sin(a) * d;
       if (Math.abs(x) > LIMIT - 10 || Math.abs(z) > LIMIT - 10) continue;
-      if (Math.hypot(x, z) > Math.max(WANDER, Math.hypot(this.position.x, this.position.z))) continue;
+      if (Math.hypot(x, z) > Math.max(ctx.wander ?? WANDER, Math.hypot(this.position.x, this.position.z))) continue;
       this.target = { x, z };
       this.patrolAlt = fl.cruiseAlt[0] + ctx.rnd() * (fl.cruiseAlt[1] - fl.cruiseAlt[0]);
       this.set('MOVING', 60);
@@ -468,7 +512,7 @@ export class Animal {
         x = this.position.x + Math.cos(a) * d; z = this.position.z + Math.sin(a) * d;
         if (Math.abs(x) > LIMIT || Math.abs(z) > LIMIT) continue;
         if (w.heightAt(x, z) < w.waterLevel + 0.3) continue;
-        if (Math.hypot(x, z) > Math.max(WANDER, Math.hypot(this.position.x, this.position.z))) continue;
+        if (Math.hypot(x, z) > Math.max(ctx.wander ?? WANDER, Math.hypot(this.position.x, this.position.z))) continue;
       }
       if (far && i < 9 && Math.hypot(x - p.x, z - p.z) < 35) continue;
       this.target = { x, z };
@@ -480,13 +524,20 @@ export class Animal {
 
   private move(dt: number, ctx: AnimalContext): void {
     if (this.speed < 0.001) return;
-    const nx = this.position.x - Math.sin(this.direction) * this.speed * dt;
-    const nz = this.position.z - Math.cos(this.direction) * this.speed * dt;
-    const water = !this.species.flight && ctx.world.heightAt(nx, nz) < ctx.world.waterLevel + 0.15;
-    const blocked = Math.abs(nx) > LIMIT || Math.abs(nz) > LIMIT || water;
-    if (!blocked) { this.position.x = nx; this.position.z = nz; return; }
+    const sx = -Math.sin(this.direction) * this.speed * dt, sz = -Math.cos(this.direction) * this.speed * dt;
+    const nx = this.position.x + sx, nz = this.position.z + sz;
+    const w = ctx.world, r = Math.max(0.4, this.species.bounds.halfWidth);
+    const water = !this.species.flight && w.flatY === null && w.heightAt(nx, nz) < w.waterLevel + 0.15;
+    const edge = Math.abs(nx) > LIMIT || Math.abs(nz) > LIMIT;
+    const bld = !this.species.flight && w.blocksAnimal(nx, nz, r);
+    if (!water && !edge && !bld) { this.position.x = nx; this.position.z = nz; return; }
+    if (!water && !edge && bld && this.hunting) { // hunters slide along walls
+      if (!w.blocksAnimal(nx, this.position.z, r)) { this.position.x = nx; return; }
+      if (!w.blocksAnimal(this.position.x, nz, r)) { this.position.z = nz; return; }
+      return;
+    }
     if (this.state === 'FLEEING') {
-      // Blocked (edge or water): head back toward the center.
+      // Blocked (edge, water or a building): head back toward the center.
       this.fleeHeading = Math.atan2(this.position.x, this.position.z) + (ctx.rnd() < 0.5 ? 0.6 : -0.6);
     } else {
       this.target = null;

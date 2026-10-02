@@ -24,7 +24,7 @@ export class Menu {
     c.textContent = 'CLOSE';
     c.onclick = () => this.close();
     grid.append(c);
-    document.body.append(this.root);
+    (document.getElementById('ui') ?? document.body).append(this.root);
   }
 
   open(): void { this.root.style.display = 'flex'; }

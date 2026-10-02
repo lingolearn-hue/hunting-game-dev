@@ -33,7 +33,7 @@ export interface LookDef {
   head: [number, number, number];  // w, h, l
   tail: 'none' | 'tuft' | 'long';
   tailLen?: number;
-  feature: 'none' | 'antlers' | 'ceratopsian' | 'crest' | 'arms' | 'ears' | 'tusks' | 'turret' | 'tracks';
+  feature: 'none' | 'antlers' | 'ceratopsian' | 'crest' | 'arms' | 'ears' | 'tusks' | 'turret' | 'tracks' | 'eyes';
   earLen?: number;
   antlerLen?: number;
   wingSpan?: number;               // birds: wing span; drones: rotor arm span
@@ -57,6 +57,8 @@ export interface SpeciesDef {
   activity: Array<[number, number]>; // active hour windows
   habitat: string;
   health: number;
+  /** Night monster: spawns at night, hunts the player, not part of the field journal. */
+  monster?: boolean;
   flight?: FlightDef;
   predator?: PredatorDef;
   /** 0..1: how well it smells the player downwind (default 0.6, flyers 0.15). */

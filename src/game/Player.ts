@@ -15,7 +15,13 @@ export class Player {
   invuln = 0;
   /** Predators cannot attack (menu toggle). */
   safe = false;
+  /** Standing next to a campfire: night monsters keep away. */
+  fireSafe = false;
+  /** Pose comes from outside (WebXR tracking): no walking simulation, orientation = deviceQuat as is. */
+  external = false;
   eyeHeight = EYE_STAND;
+  /** Smoothed height of the ground (or tower platform) under the player. */
+  standY: number | null = null;
   /** Movement input: x = strafe right, y = forward, each in [-1,1]. Relative to view heading. */
   move = { x: 0, y: 0 };
   zoom = 1;
@@ -50,7 +56,9 @@ export class Player {
 
   /** View orientation for a given phone orientation (null = no sensor). */
   orientationFor(dev: Quat | null): Quat {
-    const base = dev
+    const base = this.external
+      ? (dev ?? QUAT_IDENTITY())
+      : dev
       ? multiply(yawQuat(this.lookYaw), multiply(this.calibration, multiply(dev, pitchQuat(this.lookPitch))))
       : multiply(yawQuat(this.lookYaw), pitchQuat(this.lookPitch));
     return multiply(yawQuat(this.swayYaw + this.kickYaw), multiply(base, pitchQuat(this.swayPitch + this.kickPitch)));

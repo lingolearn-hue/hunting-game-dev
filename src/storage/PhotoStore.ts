@@ -1,4 +1,5 @@
 import { ScoreBreakdown } from '../game/Scoring';
+import { ProgressRecord } from '../game/Progress';
 
 export interface PhotoRecord {
   id?: number;
@@ -42,7 +43,7 @@ export interface HuntRecord {
 }
 
 const DB_NAME = 'hunting-game';
-const DB_VERSION = 3; // v2: added 'hunts'. v3: added 'journal'. Add migrations in onupgradeneeded when bumping.
+const DB_VERSION = 4; // v2: added 'hunts'. v3: added 'journal'. v4: added 'progress'. Add migrations in onupgradeneeded when bumping.
 export const RECORD_SCHEMA = 1;
 
 const req = <T>(r: IDBRequest<T>) =>
@@ -64,6 +65,7 @@ export class PhotoStore {
           if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs');
           if (!db.objectStoreNames.contains('hunts')) db.createObjectStore('hunts', { keyPath: 'id', autoIncrement: true });
           if (!db.objectStoreNames.contains('journal')) db.createObjectStore('journal', { keyPath: 'species' });
+          if (!db.objectStoreNames.contains('progress')) db.createObjectStore('progress', { keyPath: 'level' });
         };
         o.onsuccess = () => res(o.result);
         o.onerror = () => rej(o.error);
@@ -123,6 +125,25 @@ export class PhotoStore {
     const db = await this.db();
     const tx = db.transaction('journal', 'readwrite');
     tx.objectStore('journal').put(entry);
+    await done(tx);
+  }
+
+  async getProgress(level: string): Promise<ProgressRecord | undefined> {
+    const db = await this.db();
+    return req(db.transaction('progress').objectStore('progress').get(level)) as Promise<ProgressRecord | undefined>;
+  }
+
+  async putProgress(rec: ProgressRecord): Promise<void> {
+    const db = await this.db();
+    const tx = db.transaction('progress', 'readwrite');
+    tx.objectStore('progress').put(rec);
+    await done(tx);
+  }
+
+  async deleteProgress(level: string): Promise<void> {
+    const db = await this.db();
+    const tx = db.transaction('progress', 'readwrite');
+    tx.objectStore('progress').delete(level);
     await done(tx);
   }
 }
