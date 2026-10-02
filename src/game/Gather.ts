@@ -2,9 +2,10 @@ import { Game } from './Game';
 import { Animal } from './Animal';
 import { Prop } from '../data/environments/Level';
 import { BuildKind } from '../equipment/MultiTool';
-import { BUILD_DEFS, Building } from './Buildings';
+import { buildCost, Building } from './Buildings';
+import { BUILD_DEFS } from './Buildings';
 import { rayBox } from './Hunting';
-import { harvestReward } from './Rewards';
+import { HARVEST_COINS } from './Rewards';
 import { rotateVec } from '../util/quat';
 
 export type GatherResult =
@@ -49,7 +50,7 @@ export function gather(game: Game): GatherResult {
   }
 
   if (corpse && (!prop || ct <= pt)) {
-    const coins = harvestReward(corpse.species);
+    const coins = HARVEST_COINS;
     game.sim.animals.remove(corpse);
     game.progress.addCoins(coins, `harvest ${corpse.species.name}`);
     return { kind: 'harvest', animal: corpse, coins };
@@ -85,12 +86,14 @@ export function buildTarget(game: Game, kind: BuildKind): { x: number; z: number
 export type BuildResult = { ok: true; building: Building } | { ok: false; reason: string };
 
 export function tryBuild(game: Game, kind: BuildKind): BuildResult {
-  const def = BUILD_DEFS[kind], pr = game.progress;
+  const def = BUILD_DEFS[kind], pr = game.progress, cost = buildCost(game.level, kind);
   if (!pr.has(def.tech)) return { ok: false, reason: 'not unlocked' };
-  if (pr.wood < def.wood || pr.stone < def.stone) return { ok: false, reason: `needs ${def.wood} wood, ${def.stone} stone` };
+  if (pr.wood < cost.wood || pr.stone < cost.stone || pr.coins < cost.coins) {
+    return { ok: false, reason: cost.coins ? `needs ${cost.coins} coins` : `needs ${cost.wood} wood, ${cost.stone} stone` };
+  }
   const t = buildTarget(game, kind);
   if (!game.sim.buildings.canPlace(kind, t.x, t.z, t.rot, game.player.position)) return { ok: false, reason: 'cannot build here' };
-  pr.wood -= def.wood; pr.stone -= def.stone;
+  pr.wood -= cost.wood; pr.stone -= cost.stone; pr.coins -= cost.coins;
   const building = game.sim.buildings.place(kind, t.x, t.z, t.rot, pr.nextBuildingId++);
   return { ok: true, building };
 }
@@ -101,9 +104,10 @@ export function removeBuilding(game: Game): Building | null {
   const b = game.sim.buildings.at(t.x, t.z) ?? game.sim.buildings.at(game.player.position.x + (t.x - game.player.position.x) * 0.5, game.player.position.z + (t.z - game.player.position.z) * 0.5);
   if (!b) return null;
   game.sim.buildings.remove(b.id);
-  const def = BUILD_DEFS[b.kind];
-  game.progress.wood += Math.floor(def.wood / 2);
-  game.progress.stone += Math.floor(def.stone / 2);
+  const cost = buildCost(game.level, b.kind);
+  game.progress.wood += Math.floor(cost.wood / 2);
+  game.progress.stone += Math.floor(cost.stone / 2);
+  game.progress.coins += Math.floor(cost.coins / 2);
   game.progress.changed();
   return b;
 }

@@ -33,7 +33,9 @@ function lighting(hour: number): number {
   return 1;
 }
 
-function scoreAnimal(game: Game, a: Animal, aspect: number): { total: number; breakdown: ScoreBreakdown; dist: number } | null {
+interface Scored { total: number; breakdown: ScoreBreakdown; dist: number; onCross: boolean; centerDist: number; }
+
+function scoreAnimal(game: Game, a: Animal, aspect: number): Scored | null {
   if (a.state === 'DEAD') return null;
   const p = game.player, cam = p.position;
   const dist = Math.hypot(a.position.x - cam.x, a.position.z - cam.z);
@@ -88,6 +90,8 @@ function scoreAnimal(game: Game, a: Animal, aspect: number): { total: number; br
   const r = (v: number) => Math.round(v * 10) / 10;
   return {
     total, dist,
+    onCross: minX <= 0 && maxX >= 0 && minY <= 0 && maxY >= 0, // the crosshair is inside the animal's frame
+    centerDist: Math.hypot(cx, cy),
     breakdown: {
       size: r(size), framing: r(framing), composition: r(composition), visibility: r(visibility),
       posture: r(posture), awareness: r(awareness), lighting: r(light), quality: r(quality),
@@ -95,12 +99,20 @@ function scoreAnimal(game: Game, a: Animal, aspect: number): { total: number; br
   };
 }
 
-/** Scores the current view. Picks the best-scoring animal in frame. */
+/**
+ * Scores the current view. The subject is the animal under the crosshair (the nearest one if several overlap there);
+ * without one, the animal closest to the image center.
+ */
 export function scorePhoto(game: Game, aspect: number): ShotResult {
-  let best: (ReturnType<typeof scoreAnimal> & { animal: Animal }) | null = null;
+  let best: (Scored & { animal: Animal }) | null = null;
   for (const a of game.sim.animals.list) {
     const s = scoreAnimal(game, a, aspect);
-    if (s && (!best || s.total > best.total)) best = { ...s, animal: a };
+    if (!s) continue;
+    const better = !best
+      || (s.onCross && !best.onCross)
+      || (s.onCross && best.onCross && s.dist < best.dist)
+      || (!s.onCross && !best.onCross && s.centerDist < best.centerDist);
+    if (better) best = { ...s, animal: a };
   }
   if (!best) return { animalId: null, species: null, speciesName: null, distance: 0, total: 0, breakdown: null };
   return {

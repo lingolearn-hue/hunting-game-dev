@@ -10,6 +10,7 @@ import { Torch } from '../equipment/Torch';
 import { MultiTool } from '../equipment/MultiTool';
 import { Equipment, Overlay } from '../equipment/Equipment';
 import { Progress, ProgressRecord } from './Progress';
+import { TECH_BY_ID, techApplies } from '../data/tech';
 import { LevelDef } from '../data/environments/Level';
 import { makeRng } from '../util/rng';
 import { Quat } from '../util/quat';
@@ -40,15 +41,20 @@ export class Game {
 
   constructor(readonly level: LevelDef, rec?: ProgressRecord, readonly naturalist = false) {
     this.progress = new Progress(level.id, rec);
+    this.progress.applies = (id) => !!TECH_BY_ID[id] && techApplies(TECH_BY_ID[id], level, naturalist);
     if (level.renderer === 'xr') this.progress.unlocked.add('rifle'); // no camera image in WebXR: start with the rifle
     this.world = new World(level);
     this.shotRnd = makeRng(level.seed + 99);
     this.sim = new Simulation(this.world, this.player, this.shotRnd);
     this.player.external = level.renderer === 'xr';
     // Restore the base and the trees/rocks that were cut down earlier
-    for (const i of this.progress.removedProps) { const pr = this.world.props[i]; if (pr) this.world.removeProp(pr); }
-    this.sim.buildings.restore(this.progress.buildings);
-    this.sim.buildings.onChange = () => { this.progress.buildings = this.sim.buildings.toRecords(); this.progress.changed(); };
+    // (AR levels: the real world differs every session, so nothing is restored there)
+    const persistent = !level.renderer || level.renderer === 'synthetic';
+    if (persistent) {
+      for (const i of this.progress.removedProps) { const pr = this.world.props[i]; if (pr) this.world.removeProp(pr); }
+      this.sim.buildings.restore(this.progress.buildings);
+      this.sim.buildings.onChange = () => { this.progress.buildings = this.sim.buildings.toRecords(); this.progress.changed(); };
+    }
     this.applyTech();
     this.equip(level.renderer === 'xr' ? 'rifle' : 'camera');
     this.player.position.y = this.world.heightAt(0, 0) + this.player.eyeHeight;
@@ -64,13 +70,17 @@ export class Game {
   /** Tools the player has, in HUD order: camera, binoculars, rifle, rockets, torch, multitool. */
   tools(): EquipId[] {
     const synthetic = !this.level.renderer || this.level.renderer === 'synthetic';
-    if (this.level.renderer === 'xr') return this.naturalist ? [] : ['rifle', ...(this.has('launcher') && this.level.extraEquipment?.includes('launcher') ? ['launcher' as EquipId] : [])];
+    const cannons = !synthetic && this.has('build.cannon'); // AR levels: the multitool only places autocannons
+    if (this.level.renderer === 'xr') {
+      const x: EquipId[] = this.naturalist ? [] : ['rifle', ...(this.has('launcher') && this.level.extraEquipment?.includes('launcher') ? ['launcher' as EquipId] : [])];
+      return cannons ? [...x, 'multitool'] : x;
+    }
     const t: EquipId[] = ['camera'];
     if (this.has('bino')) t.push('binoculars');
     if (!this.naturalist && this.has('rifle')) t.push('rifle');
     if (!this.naturalist && this.level.extraEquipment?.includes('launcher') && this.has('launcher')) t.push('launcher');
     if (synthetic && this.has('torch')) t.push('torch');
-    if (synthetic && this.has('multitool')) t.push('multitool');
+    if ((synthetic && this.has('multitool')) || cannons) t.push('multitool');
     return t;
   }
 
@@ -119,7 +129,9 @@ export class Game {
   equip(id: EquipId): void {
     this.current = this.toolOf(id);
     this.thermalOn = false;
-    this.multitool.buildKind = null;
+    // multitool: gathering on the synthetic levels; in the AR levels it only places autocannons
+    const synthetic = !this.level.renderer || this.level.renderer === 'synthetic';
+    this.multitool.buildKind = synthetic ? null : this.has('build.cannon2') && !this.has('build.cannon') ? 'cannon2' : 'cannon';
     this.refreshZoom();
     this.player.setZoom(this.availableZooms()[0]); // changing tool resets zoom
   }

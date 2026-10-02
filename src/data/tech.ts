@@ -49,6 +49,11 @@ export const TECH: TechNode[] = [
   { id: 'map.r2', name: 'Radar 160 m', group: 'Map', desc: 'Minimap range 160 m.', cost: 70, requires: ['map.r1'] },
 ];
 
+export type TechCategory = 'Tools' | 'Weapons' | 'Construction';
+export const CATEGORY_OF: Record<TechGroup, TechCategory> = {
+  Camera: 'Tools', Binoculars: 'Tools', Torch: 'Tools', Map: 'Tools', Rifle: 'Weapons', Rockets: 'Weapons', Multitool: 'Construction', Build: 'Construction',
+};
+
 export const TECH_BY_ID: Record<string, TechNode> = Object.fromEntries(TECH.map((n) => [n.id, n]));
 
 /** Which nodes exist on a level (some tools make no sense in AR, or without hunting). */
@@ -60,7 +65,8 @@ export function techApplies(n: TechNode, level: LevelDef, naturalist: boolean): 
     case 'Camera': case 'Binoculars': return !xr && (!thermal || synthetic);
     case 'Rifle': return !naturalist && (!thermal || synthetic);
     case 'Rockets': return !naturalist && !!level.extraEquipment?.includes('launcher') && (!thermal || synthetic);
-    case 'Torch': case 'Multitool': case 'Build': return synthetic;
+    case 'Torch': case 'Multitool': return synthetic;
+    case 'Build': return synthetic || n.id.startsWith('build.cannon'); // AR levels: autocannons only (paid with coins)
     case 'Map': return true;
   }
 }

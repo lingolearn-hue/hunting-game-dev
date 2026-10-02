@@ -28,6 +28,13 @@ export const BUILD_DEFS: Record<BuildKind, BuildDef> = {
   cannon2: { name: 'Heavy autocannon', tech: 'build.cannon2', wood: 20, stone: 40, hx: 1.0, hz: 1.0, height: 1.7, blocksPlayer: true },
 };
 
+/** Cost of a structure: wood/stone on the synthetic levels, coins in the AR levels (nothing to gather there). */
+export function buildCost(level: { renderer?: string }, kind: BuildKind): { wood: number; stone: number; coins: number } {
+  const d = BUILD_DEFS[kind];
+  if (level.renderer === 'ar' || level.renderer === 'xr') return { wood: 0, stone: 0, coins: kind === 'cannon2' ? 100 : 40 };
+  return { wood: d.wood, stone: d.stone, coins: 0 };
+}
+
 export interface Turret { range: number; rate: number; damage: number; }
 export const TURRETS: Partial<Record<BuildKind, Turret>> = {
   cannon: { range: 45, rate: 4, damage: 12 },
@@ -57,8 +64,10 @@ export class BuildingSystem {
   /** Monsters (or other animals) killed by turrets since last drained. */
   private kills: Animal[] = [];
   onChange?: () => void;
+  private arLevel: boolean;
 
   constructor(private world: World, private animals: AnimalManager, private rnd: () => number) {
+    this.arLevel = world.level.renderer === 'ar' || world.level.renderer === 'xr';
     world.extraBlock = (x, z, r, forPlayer) => this.blocks(x, z, r, forPlayer);
     world.floorHook = (x, z) => this.floorAt(x, z);
   }
@@ -157,7 +166,7 @@ export class BuildingSystem {
     return best;
   }
 
-  /** Turrets shoot night monsters in range with a clear line. */
+  /** Turrets shoot night monsters (in the AR levels: the drones and machines) in range with a clear line. */
   update(dt: number): void {
     for (const t of this.tracers) t.age += dt;
     this.tracers = this.tracers.filter((t) => t.age < 0.12);
@@ -168,7 +177,7 @@ export class BuildingSystem {
       const muzzle: V3 = [b.x, b.y + BUILD_DEFS[b.kind].height, b.z];
       let target: Animal | null = null, best = spec.range;
       for (const a of this.animals.list) {
-        if (a.state === 'DEAD' || !a.species.monster) continue;
+        if (a.state === 'DEAD' || !(a.species.monster || this.arLevel)) continue;
         const d = Math.hypot(a.position.x - b.x, a.position.z - b.z);
         if (d >= best) continue;
         const c: V3 = [a.position.x, a.position.y + a.species.bounds.height * 0.5, a.position.z];

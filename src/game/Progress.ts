@@ -11,6 +11,8 @@ export interface ProgressRecord {
   stone: number;
   buildings: BuildingRec[];
   removedProps: number[];  // indices of trees/rocks that were cut down
+  /** Best photo score per species (photo coins are paid for improvements only, max 100 per species). */
+  bestPhoto?: Record<string, number>;
   nextBuildingId: number;
 }
 
@@ -23,6 +25,9 @@ export class Progress {
   buildings: BuildingRec[] = [];
   removedProps: number[] = [];
   nextBuildingId = 1;
+  bestPhoto: Record<string, number> = {};
+  /** Which tech nodes exist on this level (requirements outside it are ignored). Set by the game. */
+  applies?: (id: string) => boolean;
   onChange?: () => void;
   onCoins?: (n: number, why: string) => void;
 
@@ -33,6 +38,7 @@ export class Progress {
       this.buildings = rec.buildings ?? [];
       this.removedProps = rec.removedProps ?? [];
       this.nextBuildingId = rec.nextBuildingId ?? 1;
+      this.bestPhoto = rec.bestPhoto ?? {};
     }
   }
 
@@ -46,9 +52,26 @@ export class Progress {
     this.onChange?.();
   }
 
+  /** Requirements that exist on this level. */
+  requirements(id: string): string[] {
+    return (TECH_BY_ID[id]?.requires ?? []).filter((r) => !this.applies || this.applies(r));
+  }
+
   canBuy(id: string): boolean {
     const n = TECH_BY_ID[id];
-    return !!n && !this.has(id) && this.coins >= n.cost && (n.requires ?? []).every((r) => this.has(r));
+    return !!n && !this.has(id) && this.coins >= n.cost && this.requirements(id).every((r) => this.has(r));
+  }
+
+  /**
+   * Coins for a photo: the improvement over the best score of this species so far (score is 0-100,
+   * so a species pays at most 100 coins in total through photos).
+   */
+  photoCoins(species: string, score: number): number {
+    const best = this.bestPhoto[species] ?? 0;
+    if (score <= best) return 0;
+    this.bestPhoto[species] = score;
+    this.onChange?.();
+    return score - best;
   }
 
   buy(id: string): boolean {
@@ -64,7 +87,7 @@ export class Progress {
   toRecord(): ProgressRecord {
     return {
       level: this.levelId, coins: this.coins, unlocked: [...this.unlocked], wood: this.wood, stone: this.stone,
-      buildings: this.buildings, removedProps: this.removedProps, nextBuildingId: this.nextBuildingId,
+      buildings: this.buildings, removedProps: this.removedProps, nextBuildingId: this.nextBuildingId, bestPhoto: this.bestPhoto,
     };
   }
 }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Game } from '../game/Game';
 import { BuildKind } from '../equipment/MultiTool';
-import { BUILD_DEFS } from '../game/Buildings';
+import { buildCost } from '../game/Buildings';
 import { buildTarget } from '../game/Gather';
 import { TORCH_TIERS } from '../equipment/Torch';
 import { rotateVec } from '../util/quat';
@@ -155,8 +155,8 @@ export class BuildingViews {
       this.scene.add(parts.group);
       this.ghost = { kind, parts };
     }
-    const t = buildTarget(game, kind), def = BUILD_DEFS[kind], pr = game.progress;
-    const ok = pr.wood >= def.wood && pr.stone >= def.stone && game.sim.buildings.canPlace(kind, t.x, t.z, t.rot, game.player.position);
+    const t = buildTarget(game, kind), c = buildCost(game.level, kind), pr = game.progress;
+    const ok = pr.wood >= c.wood && pr.stone >= c.stone && pr.coins >= c.coins && game.sim.buildings.canPlace(kind, t.x, t.z, t.rot, game.player.position);
     const g = this.ghost.parts.group;
     g.position.set(t.x, game.world.heightAt(t.x, t.z), t.z);
     g.rotation.y = t.rot;

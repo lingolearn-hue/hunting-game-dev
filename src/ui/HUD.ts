@@ -3,7 +3,7 @@ import { rangeFinder } from '../game/Ranging';
 import { yawOf } from '../util/quat';
 import { BinocularsOverlay } from './BinocularsOverlay';
 import { MiniMap } from './MiniMap';
-import { BUILD_DEFS } from '../game/Buildings';
+import { BUILD_DEFS, buildCost } from '../game/Buildings';
 import { BuildKind } from '../equipment/MultiTool';
 
 const LABEL: Record<string, string> = { camera: 'CAMERA', binoculars: 'BINOCULARS', weapon: 'RIFLE', launcher: 'ROCKETS', torch: 'TORCH', multitool: 'MULTITOOL' };
@@ -116,7 +116,8 @@ export class HUD {
   /** Multitool panel: gather mode and the unlocked structures. */
   private syncBuildPanel(): void {
     const g = this.game;
-    const kinds = BUILD_ORDER.filter((k) => g.has(BUILD_DEFS[k].tech));
+    const synthetic = !g.level.renderer || g.level.renderer === 'synthetic';
+    const kinds = BUILD_ORDER.filter((k) => g.has(BUILD_DEFS[k].tech) && (synthetic || k.startsWith('cannon')));
     const key = kinds.join(',');
     if (key === this.buildKey) return;
     this.buildKey = key;
@@ -126,8 +127,11 @@ export class HUD {
       const b = document.createElement('button'); b.textContent = label; b.onclick = () => this.actions.build(kind);
       this.buildBtns.set(id, b); this.buildPanel.append(b);
     };
-    add('gather', 'GATHER', null);
-    for (const k of kinds) add(k, `${BUILD_DEFS[k].name.toUpperCase()}\n${BUILD_DEFS[k].wood}w ${BUILD_DEFS[k].stone}s`, k);
+    if (synthetic) add('gather', 'GATHER', null);
+    for (const k of kinds) {
+      const c = buildCost(g.level, k);
+      add(k, `${BUILD_DEFS[k].name.toUpperCase()}\n${c.coins ? `${c.coins} coins` : `${c.wood}w ${c.stone}s`}`, k);
+    }
     if (kinds.length) add('remove', 'REMOVE', 'remove');
   }
 
@@ -171,7 +175,7 @@ export class HUD {
       : cur.kind === 'launcher' ? ` · ${g.launcher.reloading ? 'reloading' : `${g.launcher.ammo}/${g.launcher.magazine}`}` : '';
     this.time.textContent = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')} · ${LABEL[cur.kind]}${ammo}`;
     const pr = g.progress;
-    this.stats.textContent = `COINS ${pr.coins}` + (g.has('multitool') ? ` · WOOD ${pr.wood} · STONE ${pr.stone}` : '');
+    this.stats.textContent = `COINS ${pr.coins}` + (g.has('multitool') && (!g.level.renderer || g.level.renderer === 'synthetic') ? ` · WOOD ${pr.wood} · STONE ${pr.stone}` : '');
 
     if (this.crouchBtn.style.display !== 'none') this.crouchBtn.textContent = g.player.crouching ? 'STAND' : 'CROUCH';
     this.triggerBtn.textContent = cur.kind === 'weapon' ? 'FIRE' : cur.kind === 'launcher' ? 'LAUNCH' : cur.kind === 'multitool' ? 'USE' : 'PHOTO';
@@ -212,7 +216,7 @@ export class HUD {
       this.lockText.style.display = 'block'; this.lockText.style.color = '#fff';
       this.lockText.textContent = k === null ? 'GATHER · aim at a tree, rock or carcass'
         : k === 'remove' ? 'REMOVE · aim at a structure (50% back)'
-        : `BUILD ${BUILD_DEFS[k].name.toUpperCase()} · ${BUILD_DEFS[k].wood} wood, ${BUILD_DEFS[k].stone} stone`;
+        : (() => { const c = buildCost(g.level, k); return `BUILD ${BUILD_DEFS[k].name.toUpperCase()} · ${c.coins ? `${c.coins} coins` : `${c.wood} wood, ${c.stone} stone`}`; })();
     }
 
     this.map.update(g, dt);

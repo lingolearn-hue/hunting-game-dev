@@ -54,12 +54,12 @@ export class SyntheticRenderer implements Renderer {
     this.hemi.color.setHex(P.hemiSky); this.hemi.groundColor.setHex(P.hemiGround);
     this.scene.add(this.hemi, this.sun, this.moon);
     this.sun.position.set(60, 90, 30);
+    this.bViews = new BuildingViews(this.scene); // autocannons are placed in the AR levels too
 
     if (!this.arMode) {
       this.sky = new SkySystem(game.level.seed);
       this.scene.add(this.sky.group);
       this.scene.background = new THREE.Color(P.sky);
-      this.bViews = new BuildingViews(this.scene);
       this.buildTerrain(game);
       this.buildWater(game);
       this.buildProps(game);
@@ -96,13 +96,13 @@ export class SyntheticRenderer implements Renderer {
     }
     this.syncEffects(game);
     this.view.update(game.player);
+    this.bViews!.update(game, dt, this.view.camera);
     if (!this.arMode) {
       this.syncBlood(game);
       this.syncRemovedProps(game);
       this.sky!.update(game.sim.timeOfDay, this.view.camera.position, dt, game.sim.wind, {
         sun: this.sun, moon: this.moon, hemi: this.hemi, scene: this.scene, palette: this.palette,
       });
-      this.bViews!.update(game, dt, this.view.camera);
       this.applyThermal(game.thermalOn && game.thermalAvailable());
     }
     this.gl.render(this.scene, this.view.camera);

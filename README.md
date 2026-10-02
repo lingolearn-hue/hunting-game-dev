@@ -1,8 +1,8 @@
-Version: 13 — 2026-10-02
+Version: 14 — 2026-10-03
 
 # Hunting Game
 
-Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v11.md`.
+Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v12.md`.
 
 Status: photography + hunting + naturalist mode, tech tree with coins per level (zoom steps, thermal view, torch, multitool, building), night monsters, respawn, sky with sun/moon/stars/clouds, minimap: 5 levels (Forest, Dinosaur Valley, Machine Range with seeker rockets, AR Camera Test, AR World with WebXR SLAM tracking on Android), 480 m area, predator attacks with respawn, wind and scent, tracking, day/night, positional audio, field journal, dual-stick controls, PWA/offline.
 

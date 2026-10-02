@@ -118,8 +118,8 @@ export class SkySystem {
       for (let i = 0; i < n; i++) {
         const d = dirOnSphere().multiplyScalar(RADIUS - 5);
         pos.push(d.x, d.y, d.z);
-        const b = bright ? 0.9 + rnd() * 0.1 : 0.45 + rnd() * 0.5, warm = rnd();
-        col.push(b, b * (0.9 + warm * 0.1), b * (1 - warm * 0.25)); // slight colour variety
+        const b = bright ? 0.9 + rnd() * 0.1 : 0.45 + rnd() * 0.5;
+        col.push(b, b, b); // neutral white: no coloured dots
       }
       this.stars.add(makePoints(pos, col, size));
     };
@@ -138,7 +138,7 @@ export class SkySystem {
       const d = e1.clone().multiplyScalar(Math.cos(t)).add(e2.clone().multiplyScalar(Math.sin(t))).add(normal.clone().multiplyScalar(spread)).normalize().multiplyScalar(RADIUS - 6);
       mp.push(d.x, d.y, d.z);
       const b = 0.28 + 0.35 * rnd() + 0.2 * core;
-      mcol.push(b, b * 0.97, b * (0.85 + 0.1 * (1 - core)));
+      mcol.push(b, b, b);
     }
     this.stars.add(makePoints(mp, mcol, 1.3));
     this.group.add(this.stars);
@@ -203,7 +203,7 @@ export class SkySystem {
       const col = this.tmp.setHex(0x1c2438).lerp(this.tmp2.setHex(0xffffff), dayK);
       col.lerp(this.tmp2.setHex(0xffa070), tw * 0.8 * Math.max(0, cd.dot(sunDir) * 0.5 + 0.7));
       (c.s.material as THREE.SpriteMaterial).color.copy(col);
-      (c.s.material as THREE.SpriteMaterial).opacity = 0.35 + 0.5 * dayK;
+      (c.s.material as THREE.SpriteMaterial).opacity = 0.85 - 0.05 * dayK; // opaque enough to hide the stars behind
     }
 
     // Lighting and fog

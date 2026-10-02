@@ -2,7 +2,7 @@ import { Game } from './game/Game';
 import { scorePhoto } from './game/Scoring';
 import { fireShot, fireRocket } from './game/Hunting';
 import { gather, tryBuild, removeBuilding } from './game/Gather';
-import { killReward, photoReward, discoveryReward } from './game/Rewards';
+import { KILL_COINS } from './game/Rewards';
 import { allTechIds } from './data/tech';
 import { ProgressRecord } from './game/Progress';
 import { TechTreeView } from './ui/TechTree';
@@ -145,7 +145,6 @@ function begin(level: LevelDef, rec: ProgressRecord | undefined, cameraOk = true
   let pendingDiscovery = false;
   journal.onDiscover = (e, rarity) => {
     const sp = SPECIES[e.species];
-    game.progress.addCoins(discoveryReward(sp), `new species ${sp.name}`);
     if (busy) { pendingDiscovery = true; return; } // folded into the photo/shot message
     hud.toast(`New species: ${sp.name}${rarity >= 4 ? ' — rare!' : ''}`, 'Added to the field journal');
   };
@@ -186,7 +185,7 @@ function begin(level: LevelDef, rec: ProgressRecord | undefined, cameraOk = true
         ? `size ${b.size} · frame ${b.framing} · comp ${b.composition} · vis ${b.visibility} · pose ${b.posture} · calm ${b.awareness} · light ${b.lighting} · q x${b.quality}`
         : '';
       const photographed = game.sim.animals.list.find((a) => a.id === result.animalId);
-      if (photographed && result.total > 0) game.progress.addCoins(photoReward(result.total, photographed.species, !journal.entries.has(photographed.species.id)), 'photo');
+      if (photographed) game.progress.addCoins(game.progress.photoCoins(photographed.species.id, result.total), `photo of ${photographed.species.name}`);
       journal.recordPhoto(photographed, result.total, level.id);
       const title = (result.species ? `${result.speciesName} · ${result.distance} m · ${result.total}/100` : 'No animal in frame') + discoverNote();
       try {
@@ -215,7 +214,7 @@ function begin(level: LevelDef, rec: ProgressRecord | undefined, cameraOk = true
         const prev = busy; busy = true;
         const k = game.sim.animals.list.find((x) => x.id === o.animalId);
         journal.recordKill(k, level.id);
-        if (k) game.progress.addCoins(killReward(k.species), `${k.species.name} down — harvest it with the multitool`);
+        if (k) game.progress.addCoins(KILL_COINS, `${k.species.name} down — harvest it with the multitool`);
         busy = prev;
       }
       const title = (o.killed ? `${o.speciesName} harvested` : `${o.speciesName} hit — wounded`) + discoverNote();
@@ -250,7 +249,7 @@ function begin(level: LevelDef, rec: ProgressRecord | undefined, cameraOk = true
       if (Math.hypot(b.x - p.x, b.z - p.z) < 40) hud.flash(0.5, 200);
       for (const h of b.hits) {
         const a = h.animal;
-        if (h.killed) { journal.recordKill(a, level.id); game.progress.addCoins(killReward(a.species), `${a.species.name} destroyed`); }
+        if (h.killed) { journal.recordKill(a, level.id); game.progress.addCoins(KILL_COINS, `${a.species.name} destroyed`); }
         store.addHunt({
           schema: 1, timestamp: Date.now(), level: level.id, species: a.species.id, zone: 'blast',
           distance: Math.round(Math.hypot(a.position.x - p.x, a.position.z - p.z)), damage: h.damage, killed: h.killed,
@@ -319,7 +318,7 @@ function begin(level: LevelDef, rec: ProgressRecord | undefined, cameraOk = true
     journal.observe(game, dt, renderer.aspect());
     game.lock.update(game, dt, renderer.aspect(), game.current.kind === 'launcher');
     handleBlasts();
-    for (const a of game.sim.buildings.drainKills()) game.progress.addCoins(killReward(a.species), `${a.species.name} shot by autocannon`);
+    for (const a of game.sim.buildings.drainKills()) game.progress.addCoins(KILL_COINS, `${a.species.name} shot by autocannon`);
     for (const sp of game.sim.drainAttackLog()) {
       audio.maul();
       hud.flash(0.95, 900, '#a00');
@@ -328,7 +327,7 @@ function begin(level: LevelDef, rec: ProgressRecord | undefined, cameraOk = true
     for (const a of game.sim.animals.drainBleedDeaths()) {
       const p = game.player.position, dist = Math.round(Math.hypot(a.position.x - p.x, a.position.z - p.z));
       journal.recordKill(a, level.id);
-      game.progress.addCoins(killReward(a.species), `${a.species.name} bled out`);
+      game.progress.addCoins(KILL_COINS, `${a.species.name} bled out`);
       store.addHunt({ schema: 1, timestamp: Date.now(), level: level.id, species: a.species.id, zone: 'bleed', distance: dist, damage: 0, killed: true })
         .catch(() => { /* storage unavailable */ });
       hud.toast(`Wounded ${a.species.name} bled out`, `${dist} m away`);
