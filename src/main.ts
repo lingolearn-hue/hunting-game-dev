@@ -7,6 +7,7 @@ import { allTechIds } from './data/tech';
 import { ProgressRecord } from './game/Progress';
 import { TechTreeView } from './ui/TechTree';
 import { ScanApp } from './slam/ScanApp';
+import { ObjectScanApp } from './object3d/ObjectScanApp';
 import { EquipId } from './game/Game';
 import { LEVELS } from './data/environments';
 import { LevelDef } from './data/environments/Level';
@@ -449,6 +450,22 @@ for (const level of Object.values(LEVELS)) {
     if (!ok) { msg.textContent = 'No motion sensor access: the scan needs the phone orientation.'; return; }
     start.remove();
     new ScanApp(camBg, device, view, document.getElementById('hud')!).start();
+  });
+  const card = document.createElement('div'); card.className = 'levelCard'; card.append(b);
+  levelsEl.append(card);
+}
+
+// Object scan: ArUco marker sheet + camera -> 3D model of a single object (no motion sensors needed)
+{
+  const b = document.createElement('button');
+  b.textContent = 'Object Scan (markers)';
+  const sm = document.createElement('small'); sm.textContent = 'Print the marker sheet, put an object on it and walk around it: builds a 3D model in millimetres.';
+  b.append(sm);
+  b.addEventListener('click', async () => {
+    const camOk = await camBg.start();
+    if (!camOk) { msg.textContent = 'Camera unavailable: allow camera access (HTTPS).'; return; }
+    start.remove();
+    new ObjectScanApp(camBg, view, document.getElementById('hud')!).start();
   });
   const card = document.createElement('div'); card.className = 'levelCard'; card.append(b);
   levelsEl.append(card);
