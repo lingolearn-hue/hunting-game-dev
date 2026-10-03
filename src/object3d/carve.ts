@@ -285,8 +285,9 @@ export class Hull {
   }
 
   /** ASCII PLY with vertex colors (triangle soup). */
-  toPly(kfs: Keyframe[], comments: string[] = []): string {
+  toPly(kfs: Keyframe[], comments: string[] = [], scale = 1): string {
     const m = this.mesh(kfs), nv = m.positions.length / 3;
+    if (scale !== 1) for (let i = 0; i < m.positions.length; i++) m.positions[i] *= scale;
     const lines = ['ply', 'format ascii 1.0', ...comments.map((c) => `comment ${c}`), `element vertex ${nv}`, 'property float x', 'property float y', 'property float z',
       'property uchar red', 'property uchar green', 'property uchar blue', `element face ${nv / 3}`, 'property list uchar int vertex_indices', 'end_header'];
     for (let i = 0; i < nv; i++) lines.push(`${m.positions[i * 3].toFixed(2)} ${m.positions[i * 3 + 1].toFixed(2)} ${m.positions[i * 3 + 2].toFixed(2)} ${Math.round(m.colors[i * 3] * 255)} ${Math.round(m.colors[i * 3 + 1] * 255)} ${Math.round(m.colors[i * 3 + 2] * 255)}`);

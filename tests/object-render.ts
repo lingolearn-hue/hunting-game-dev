@@ -70,7 +70,12 @@ export function lookAt(eye: V3, target: V3, f: number, w: number, h: number): Ca
 
 export interface RenderOpts { gain?: number; offset?: number; noise?: number; blur?: boolean; ss?: number; }
 
-export function renderView(L: Layout, B: SheetBitmap, sc: Scene, cam: Cam, opt: RenderOpts = {}): Uint8Array {
+/** Table texture without a sheet (natural surface): speckle with features of a few millimetres. */
+export function tableTex(x: number, y: number): number {
+  return 60 + 150 * Math.min(1, Math.max(0, (0.5 * vnoise3(x / 6.5, y / 6.5, 5) + 0.3 * vnoise3(x / 2.9, y / 2.9, 11) + 0.2 * vnoise3(x / 14, y / 14, 2) - 0.2) / 0.6));
+}
+
+export function renderView(L: Layout | null, B: SheetBitmap | null, sc: Scene, cam: Cam, opt: RenderOpts = {}): Uint8Array {
   const { R, t, f, w, h } = cam, ss = opt.ss ?? 2;
   const eye: V3 = [-(R[0] * t[0] + R[3] * t[1] + R[6] * t[2]), -(R[1] * t[0] + R[4] * t[1] + R[7] * t[2]), -(R[2] * t[0] + R[5] * t[1] + R[8] * t[2])];
   const img = new Float32Array(w * h);
@@ -89,7 +94,8 @@ export function renderView(L: Layout, B: SheetBitmap, sc: Scene, cam: Cam, opt: 
         val = sc.tint + 75 * (n - 0.5) * 2;
       } else if (tp < Infinity) {
         const x = eye[0] + d[0] * tp, y = eye[1] + d[1] * tp;
-        if (Math.abs(x) < L.w / 2 && Math.abs(y) < L.h / 2) val = sampleSheet(B, L, x, y);
+        if (!L || !B) val = tableTex(x, y);
+        else if (Math.abs(x) < L.w / 2 && Math.abs(y) < L.h / 2) val = sampleSheet(B, L, x, y);
         else val = 70 + 60 * vnoise3(x / 9, y / 9, 3) + 25 * vnoise3(x / 3, y / 3, 9);  // wooden table
       } else {
         val = 150 + 60 * d[2] + 30 * vnoise3(d[0] * 6, d[1] * 6, 1);                      // far background

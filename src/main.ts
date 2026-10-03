@@ -8,6 +8,7 @@ import { ProgressRecord } from './game/Progress';
 import { TechTreeView } from './ui/TechTree';
 import { ScanApp } from './slam/ScanApp';
 import { ObjectScanApp } from './object3d/ObjectScanApp';
+import { ObjectScanFreeApp } from './object3d/ObjectScanFreeApp';
 import { EquipId } from './game/Game';
 import { LEVELS } from './data/environments';
 import { LevelDef } from './data/environments/Level';
@@ -466,6 +467,25 @@ for (const level of Object.values(LEVELS)) {
     if (!camOk) { msg.textContent = 'Camera unavailable: allow camera access (HTTPS).'; return; }
     start.remove();
     new ObjectScanApp(camBg, view, document.getElementById('hud')!).start();
+  });
+  const card = document.createElement('div'); card.className = 'levelCard'; card.append(b);
+  levelsEl.append(card);
+}
+
+// Object scan without markers: tracker + bundle adjustment + table-plane masks (needs a textured surface under the object)
+{
+  const b = document.createElement('button');
+  b.textContent = 'Object Scan (no markers)';
+  const sm = document.createElement('small'); sm.textContent = 'Walk around an object on a textured surface (newspaper, cloth, wood): builds a 3D model. Needs the motion sensors.';
+  b.append(sm);
+  b.addEventListener('click', async () => {
+    const camP = camBg.start();
+    const ok = await device.start();
+    const camOk = await camP;
+    if (!camOk) { msg.textContent = 'Camera unavailable: allow camera access (HTTPS).'; return; }
+    if (!ok) { msg.textContent = 'No motion sensor access: this scan needs the phone orientation.'; return; }
+    start.remove();
+    new ObjectScanFreeApp(camBg, device, view, document.getElementById('hud')!).start();
   });
   const card = document.createElement('div'); card.className = 'levelCard'; card.append(b);
   levelsEl.append(card);

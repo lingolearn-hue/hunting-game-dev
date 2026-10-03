@@ -28,9 +28,10 @@ export const KLT_DEFAULTS: KltOptions = { win: 4, iters: 10, eps: 0.02, maxResid
 const TMPL = new Float32Array(400), IX = new Float32Array(400), IY = new Float32Array(400);
 
 /** Tracks one point from `a` to `b`. Returns [x, y] or null. */
-export function trackPoint(a: Pyr, b: Pyr, x: number, y: number, o: KltOptions): [number, number] | null {
+export function trackPoint(a: Pyr, b: Pyr, x: number, y: number, o: KltOptions, guess?: [number, number]): [number, number] | null {
   const hw = o.win, n = (2 * hw + 1) * (2 * hw + 1), levels = a.d.length;
-  let gx = 0, gy = 0, resid = 0;
+  // optional initial displacement (pixels), e.g. predicted from known camera poses
+  let gx = guess ? guess[0] / (1 << (levels - 1)) : 0, gy = guess ? guess[1] / (1 << (levels - 1)) : 0, resid = 0;
   for (let L = levels - 1; L >= 0; L--) {
     const s = 1 / (1 << L), px = x * s, py = y * s, W = a.w[L], H = a.h[L], A = a.d[L], B = b.d[L];
     if (px < hw + 2 || py < hw + 2 || px > W - hw - 3 || py > H - hw - 3) { if (L === 0) return null; gx *= 2; gy *= 2; continue; }

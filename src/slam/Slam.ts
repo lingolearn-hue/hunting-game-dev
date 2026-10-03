@@ -26,7 +26,7 @@ export interface SlamOptions {
 }
 
 interface Obs { c: V3; b: V3; }
-interface Track {
+export interface Track {
   id: number; x: number; y: number; b: V3;
   obs: Obs[]; map: number; age: number; init: boolean; bad: number;
   color: [number, number, number];

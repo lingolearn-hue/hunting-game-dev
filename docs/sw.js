@@ -1,6 +1,6 @@
 // generated
-const CACHE = 'hg-7cf541e594';
-const ASSETS = ["./","index.html","assets/index-B4WBh3H1.js","manifest.webmanifest","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
+const CACHE = 'hg-a09812aa51';
+const ASSETS = ["./","index.html","assets/index-6mwRd_Jz.js","manifest.webmanifest","icon-192.png","icon-512.png","icon-maskable-512.png","apple-touch-icon.png"];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
