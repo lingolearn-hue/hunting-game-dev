@@ -6,6 +6,7 @@ import { KILL_COINS } from './game/Rewards';
 import { allTechIds } from './data/tech';
 import { ProgressRecord } from './game/Progress';
 import { TechTreeView } from './ui/TechTree';
+import { ScanApp } from './slam/ScanApp';
 import { EquipId } from './game/Game';
 import { LEVELS } from './data/environments';
 import { LevelDef } from './data/environments/Level';
@@ -432,6 +433,25 @@ for (const level of Object.values(LEVELS)) {
       if (!supported) { b.disabled = true; b.style.opacity = '0.5'; note('needs Android Chrome with ARCore'); }
     }).catch(() => { /* leave enabled */ });
   }
+}
+
+// 3D scan prototype (works with any phone camera, including iPhone Safari): optical flow + phone orientation -> sparse 3D map.
+{
+  const b = document.createElement('button');
+  b.textContent = '3D Scan (beta)';
+  const sm = document.createElement('small'); sm.textContent = 'Builds a sparse 3D map from the camera image and the phone orientation. No WebXR needed.';
+  b.append(sm);
+  b.addEventListener('click', async () => {
+    const camP = camBg.start(); // permissions must start inside the click
+    const ok = await device.start();
+    const camOk = await camP;
+    if (!camOk) { msg.textContent = 'Camera unavailable: allow camera access (HTTPS).'; return; }
+    if (!ok) { msg.textContent = 'No motion sensor access: the scan needs the phone orientation.'; return; }
+    start.remove();
+    new ScanApp(camBg, device, view, document.getElementById('hud')!).start();
+  });
+  const card = document.createElement('div'); card.className = 'levelCard'; card.append(b);
+  levelsEl.append(card);
 }
 
 // Offline support (production builds only).
