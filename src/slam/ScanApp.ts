@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Slam } from './Slam';
-import { extractObjects, toPly, MapObject } from './MapBuilder';
+import { toPly } from './MapBuilder';
+import { StructureTracker, describe, confidence } from './Structure';
 import { CameraBackground } from '../rendering/CameraBackground';
 import { DeviceOrientation } from '../input/DeviceOrientation';
 import { Player } from '../game/Player';
@@ -32,8 +33,9 @@ export class ScanApp {
   private ms = 0; private frames = 0; private acc = 0;
   private height = 1.5; private lagIdx = 1; private fovIdx = 2;
   private vw = 0; private vh = 0;
-  private objects: MapObject[] = [];
-  private objVersion = -1; private objT = 0;
+  private st = new StructureTracker();
+  private stT = 0;
+  private stVersion = -1;
   // 3D view
   private view3d = false;
   private gl: THREE.WebGLRenderer | null = null;
@@ -43,7 +45,7 @@ export class ScanApp {
   private cloudVersion = -1;
   private marker = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 8), new THREE.MeshBasicMaterial({ color: 0xffd040 }));
   private trailLine: THREE.Line | null = null;
-  private objMeshes: THREE.Mesh[] = [];
+  private structMeshes: THREE.Object3D[] = [];
   private orbit = { theta: 0.8, phi: 0.9, r: 6 };
   private btnMap!: HTMLButtonElement;
 
@@ -70,12 +72,12 @@ export class ScanApp {
 
   start(): void { requestAnimationFrame(this.frame); }
 
-  private reset(): void { this.slam?.reset(false); this.objects = []; this.objVersion = -1; }
+  private reset(): void { this.slam?.reset(false); this.st.reset(); }
 
   private save(): void {
     if (!this.slam) return;
     const pts = this.slam.alivePoints();
-    const blob = new Blob([toPly(pts)], { type: 'text/plain' });
+    const blob = new Blob([toPly(pts, describe(this.st))], { type: 'text/plain' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = `scan-${Date.now()}.ply`;
     document.body.append(a); a.click(); a.remove();
@@ -112,12 +114,12 @@ export class ScanApp {
     this.acc += performance.now() - t0; this.frames++;
     if (this.frames >= 15) { this.ms = this.acc / this.frames; this.acc = 0; this.frames = 0; }
 
-    if (slam.mapVersion !== this.objVersion && now - this.objT > 700) {
-      this.objVersion = slam.mapVersion; this.objT = now;
-      this.objects = extractObjects(slam.alivePoints(), slam.floorY).objects;
+    if (slam.state === 'track') {
+      if (now - this.stT > 700) { this.stT = now; this.st.update(slam); }   // re-fit walls and boxes on the accumulated map
+      this.st.verify(slam);                                                 // every frame: free-space and image-edge corroboration
     }
     this.text.textContent = `${info.state === 'track' ? 'TRACKING' : 'INITIALIZING'} · ${info.note}\n`
-      + `tracks ${info.tracks} · pose pts ${info.inliers} · map ${info.mapSize} · objects ${this.objects.length} · ${this.ms.toFixed(0)} ms/frame\n`
+      + `tracks ${info.tracks} · pose pts ${info.inliers} · map ${info.mapSize} · walls ${this.st.walls.filter((w) => w.confirmed).length} · boxes ${this.st.boxes.filter((b) => b.confirmed).length} · corners ${this.st.corners.length} · ${this.ms.toFixed(0)} ms\n`
       + `pos ${slam.c.map((c) => c.toFixed(2)).join(', ')} m`
       + (info.state === 'init' ? '\nHold ~1.5 m high, tilt down ~35°, slide sideways ~0.5 m' : '');
     this.drawOverlay(slam);
@@ -130,7 +132,7 @@ export class ScanApp {
     const k = LONG / Math.max(vw, vh);
     this.cv.width = Math.round(vw * k); this.cv.height = Math.round(vh * k);
     this.slam = new Slam({ width: this.cv.width, height: this.cv.height, fovLongDeg: FOVS[this.fovIdx], camHeight: this.height });
-    this.objects = [];
+    this.st.reset();
   }
 
   private drawOverlay(slam: Slam): void {
@@ -152,6 +154,21 @@ export class ScanApp {
       g.fillStyle = t.map >= 0 ? '#ff4a3a' : '#4aff7a';
       g.beginPath(); g.arc(ox + t.x * k, oy + t.y * k, t.map >= 0 ? 3 : 2, 0, 7); g.fill();
     }
+    // detected structure: edges projected into the image. Solid = confirmed, dashed = tentative; brighter = image edges agree
+    const line = (a: [number, number, number], b: [number, number, number], it: { confirmed: boolean } & Parameters<typeof confidence>[0]) => {
+      const s = slam.projectSegment(a, b);
+      if (!s) return;
+      const conf = confidence(it), good = it.edgeTries > 3 && it.edgeHits / it.edgeTries > 0.4;
+      g.strokeStyle = it.confirmed ? (good ? '#7dffb0' : '#35d070') : '#ffd040';
+      g.globalAlpha = it.confirmed ? 0.55 + 0.45 * conf : 0.6;
+      g.lineWidth = it.confirmed ? 2.5 : 1.5; g.setLineDash(it.confirmed ? [] : [5, 4]);
+      g.beginPath(); g.moveTo(ox + s[0] * k, oy + s[1] * k); g.lineTo(ox + s[2] * k, oy + s[3] * k); g.stroke();
+    };
+    for (const w of this.st.walls) for (const [a, b] of this.st.wallEdges(w)) line(a, b, w);
+    for (const b of this.st.boxes) for (const [p0, p1] of this.st.boxEdges(b)) line(p0, p1, b);
+    g.setLineDash([]); g.globalAlpha = 1;
+    g.fillStyle = '#fff';
+    for (const c of this.st.corners) { const p = slam.project([c.x, slam.floorY, c.z]); if (p) { g.beginPath(); g.arc(ox + p[0] * k, oy + p[1] * k, 4, 0, 7); g.fill(); } }
   }
 
   private drawTop(slam: Slam): void {
@@ -160,8 +177,19 @@ export class ScanApp {
     const cx = slam.c[0], cz = slam.c[2], X = (x: number) => S / 2 + (x - cx) * sc, Z = (z: number) => S / 2 + (z - cz) * sc;
     g.fillStyle = 'rgba(80,220,120,.7)';
     for (const p of slam.alivePoints()) g.fillRect(X(p.X[0]) - 1, Z(p.X[2]) - 1, 2, 2);
+    // walls: lines; boxes: rotated rectangles; corners: dots (white = confirmed, yellow = tentative)
+    for (const w of this.st.walls) {
+      g.strokeStyle = w.confirmed ? '#fff' : '#ffd040'; g.lineWidth = w.confirmed ? 3 : 1.5;
+      g.beginPath(); g.moveTo(X(w.ax), Z(w.az)); g.lineTo(X(w.bx), Z(w.bz)); g.stroke();
+    }
+    for (const b of this.st.boxes) {
+      const q = this.st.boxCorners(b);
+      g.strokeStyle = b.confirmed ? '#8ff' : '#ffd040'; g.fillStyle = 'rgba(120,255,255,.22)'; g.lineWidth = 1.5;
+      g.beginPath(); q.forEach((p, i) => (i ? g.lineTo(X(p[0]), Z(p[1])) : g.moveTo(X(p[0]), Z(p[1])))); g.closePath(); g.fill(); g.stroke();
+    }
     g.fillStyle = '#fff';
-    for (const o of this.objects) { g.beginPath(); g.arc(X(o.x), Z(o.z), Math.max(2, o.radius * sc), 0, 7); g.globalAlpha = 0.35; g.fill(); g.globalAlpha = 1; }
+    for (const c of this.st.corners) { g.beginPath(); g.arc(X(c.x), Z(c.z), 3, 0, 7); g.fill(); }
+    g.lineWidth = 1;
     g.strokeStyle = '#ffd040'; g.beginPath();
     slam.trail.forEach((p, i) => (i ? g.lineTo(X(p[0]), Z(p[2])) : g.moveTo(X(p[0]), Z(p[2]))));
     g.stroke();
@@ -206,9 +234,34 @@ export class ScanApp {
     this.cloudVersion = -1;
   }
 
+  /** Walls as translucent quads, boxes as translucent boxes with outlines. */
+  private build3dStructure(): void {
+    for (const m of this.structMeshes) { this.scene.remove(m); }
+    this.structMeshes = [];
+    const add = (o: THREE.Object3D) => { this.scene.add(o); this.structMeshes.push(o); };
+    for (const w of this.st.walls) {
+      const col = w.confirmed ? 0x40ff90 : 0xffd040;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute([w.ax, w.y0, w.az, w.bx, w.y0, w.bz, w.bx, w.y1, w.bz, w.ax, w.y1, w.az], 3));
+      g.setIndex([0, 1, 2, 0, 2, 3]);
+      add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: w.confirmed ? 0.25 : 0.1, side: THREE.DoubleSide, depthWrite: false })));
+      add(new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: col })));
+    }
+    for (const b of this.st.boxes) {
+      const col = b.confirmed ? 0x60e0ff : 0xffd040, h = b.y1 - b.y0;
+      const geo = new THREE.BoxGeometry(b.hx * 2, b.table ? 0.04 : h, b.hz * 2);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: b.confirmed ? 0.3 : 0.12, depthWrite: false }));
+      m.position.set(b.cx, b.table ? b.y1 : b.y0 + h / 2, b.cz); m.rotation.y = -b.theta;
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: col }));
+      e.position.copy(m.position); e.rotation.y = m.rotation.y;
+      add(m); add(e);
+    }
+  }
+
   private render3d(slam: Slam): void {
     const gl = this.gl!, w = gl.domElement.clientWidth, h = gl.domElement.clientHeight;
     if (gl.domElement.width !== Math.floor(w * gl.getPixelRatio())) { gl.setSize(w, h, false); this.cam3.aspect = w / h; this.cam3.updateProjectionMatrix(); }
+    if (this.st.version !== this.stVersion) { this.stVersion = this.st.version; this.build3dStructure(); }
     if (slam.mapVersion !== this.cloudVersion) {
       this.cloudVersion = slam.mapVersion;
       const pts = slam.alivePoints(), pos = new Float32Array(pts.length * 3), col = new Float32Array(pts.length * 3);
@@ -219,11 +272,6 @@ export class ScanApp {
       this.cloud = new THREE.Points(geo, new THREE.PointsMaterial({ size: 4, sizeAttenuation: false, vertexColors: true }));
       this.cloud.frustumCulled = false;
       this.scene.add(this.cloud);
-      for (const m of this.objMeshes) this.scene.remove(m);
-      this.objMeshes = this.objects.map((o) => {
-        const m = new THREE.Mesh(new THREE.CylinderGeometry(o.radius, o.radius, o.height, 12), new THREE.MeshBasicMaterial({ color: 0xff5040, wireframe: true }));
-        m.position.set(o.x, slam.floorY + o.height / 2, o.z); this.scene.add(m); return m;
-      });
     }
     if (this.trailLine) { this.scene.remove(this.trailLine); this.trailLine.geometry.dispose(); }
     if (slam.trail.length > 1) {

@@ -1,12 +1,12 @@
-Version: 15 — 2026-10-03
+Version: 16 — 2026-10-03
 
 # Hunting Game
 
-Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v13.md`.
+Phone-as-viewport hunting / wildlife simulation. Spec: `spec/Spec_v14.md`.
 
 Status: photography + hunting + naturalist mode, tech tree with coins per level (zoom steps, thermal view, torch, multitool, building), night monsters, respawn, sky with sun/moon/stars/clouds, minimap: 5 levels (Forest, Dinosaur Valley, Machine Range with seeker rockets, AR Camera Test, AR World with WebXR SLAM tracking on Android), 480 m area, predator attacks with respawn, wind and scent, tracking, day/night, positional audio, field journal, dual-stick controls, PWA/offline.
 
-3D Scan (beta, start screen): rudimentary sparse 3D mapping from optical flow plus the phone orientation, in plain JS, works in iPhone Safari (see spec section 50). Synthetic test: `npx tsx tests/slam-synthetic.ts`.
+3D Scan (beta, start screen): rudimentary sparse 3D mapping from optical flow plus the phone orientation, in plain JS, works in iPhone Safari (see spec section 50). Detects walls, boxes/tables and corners (right-angle model) and corroborates them with later frames (spec section 51). Synthetic tests: `npx tsx tests/slam-synthetic.ts`, `npx tsx tests/structure-synthetic.ts`.
 
 Debug overlay: append `?debug` to the URL (nearest animal, state, awareness).
 

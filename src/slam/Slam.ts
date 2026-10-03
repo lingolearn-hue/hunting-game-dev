@@ -31,7 +31,8 @@ interface Track {
   obs: Obs[]; map: number; age: number; init: boolean; bad: number;
   color: [number, number, number];
 }
-export interface MapPoint { X: V3; color: [number, number, number]; hits: number; alive: boolean; }
+/** `sigma`: estimated position uncertainty (m) from depth and baseline; `nobs`: number of views used. */
+export interface MapPoint { X: V3; color: [number, number, number]; hits: number; alive: boolean; sigma: number; nobs: number; }
 export interface FrameInfo { state: 'init' | 'track'; tracks: number; mapped: number; inliers: number; mapSize: number; note: string; }
 
 const DEG = Math.PI / 180;
@@ -47,6 +48,8 @@ export class Slam {
   mapVersion = 0;
   readonly focal: number;
   private prev: Pyr | null = null;
+  /** The latest grayscale image (for edge checks of the structure model). */
+  gray: Uint8Array | null = null;
   private nextId = 1;
   private initAge = 0;
   private maxTracks: number;
@@ -70,6 +73,30 @@ export class Slam {
     return rotateVec(q, d);
   }
 
+  /** Projects a 3D segment into the image, clipped at the camera's near plane. */
+  projectSegment(P0: V3, P1: V3): [number, number, number, number] | null {
+    const q = this.q, inv: Quat = [-q[0], -q[1], -q[2], q[3]];
+    let a = rotateVec(inv, sub(P0, this.c)), b = rotateVec(inv, sub(P1, this.c));
+    const near = -0.15;                                  // camera looks along -z
+    if (a[2] > near && b[2] > near) return null;
+    if (a[2] > near) a = add(a, mul(sub(b, a), (near - a[2]) / (b[2] - a[2])));
+    else if (b[2] > near) b = add(b, mul(sub(a, b), (near - b[2]) / (a[2] - b[2])));
+    const pr = (v: V3): [number, number] => [this.o.width / 2 + (this.focal * v[0]) / -v[2], this.o.height / 2 - (this.focal * v[1]) / -v[2]];
+    const p0 = pr(a), p1 = pr(b);
+    return [p0[0], p0[1], p1[0], p1[1]];
+  }
+
+  /** Processing image size. */
+  size(): { w: number; h: number } { return { w: this.o.width, h: this.o.height }; }
+
+  /** Estimated position uncertainty of a triangulated point: depth^2 * angle error / baseline. */
+  private sigmaOf(X: V3, obs: Obs[]): number {
+    let depth = 0, base = 0;
+    for (const o of obs) { depth += len(sub(X, o.c)); base = Math.max(base, len(sub(o.c, obs[0].c))); }
+    depth /= obs.length;
+    return Math.min(0.6, Math.max(0.03, (depth * depth * 0.009) / Math.max(base, 0.05)));
+  }
+
   /** Projects a world point into the image (null if behind the camera). */
   project(X: V3, c: V3 = this.c, q: Quat = this.q): [number, number] | null {
     const d = rotateVec([-q[0], -q[1], -q[2], q[3]], sub(X, c));
@@ -89,6 +116,7 @@ export class Slam {
     const pyr = buildPyr(gray, this.o.width, this.o.height, 3);
     if (this.prev && this.tracks.length) this.trackFlow(pyr);
     this.prev = pyr;
+    this.gray = gray;
     for (const t of this.tracks) t.b = this.bearing(t.x, t.y);
 
     let inliers = 0;
@@ -185,8 +213,8 @@ export class Slam {
     bestIn.forEach((k, idx) => {
       const [l1, l2] = dd[idx], p = pairs[k];
       if (l1 <= 0.05 || l2 <= 0.05) return;
-      const X = this.triangulate([{ c: c0, b: p.b1 }, { c: c1, b: p.b2 }]);
-      if (X) { p.t.map = this.addPoint(X, p.t.color, 2); made++; }
+      const o2 = [{ c: c0, b: p.b1 }, { c: c1, b: p.b2 }], X = this.triangulate(o2);
+      if (X) { p.t.map = this.addPoint(X, p.t.color, 2, this.sigmaOf(X, o2), 2); made++; }
     });
     if (made < 10) return 'too few points';
     this.floorY = c0[1] - this.o.camHeight;
@@ -220,8 +248,8 @@ export class Slam {
     return Math.sqrt(se / obs.length) <= maxRms ? X : null;
   }
 
-  private addPoint(X: V3, color: [number, number, number], hits: number): number {
-    this.map.push({ X, color, hits, alive: true });
+  private addPoint(X: V3, color: [number, number, number], hits: number, sigma: number, nobs: number): number {
+    this.map.push({ X, color, hits, alive: true, sigma, nobs });
     this.mapVersion++;
     return this.map.length - 1;
   }
@@ -300,14 +328,29 @@ export class Slam {
       if (t.map >= 0) {
         const mp = this.map[t.map], d = sub(mp.X, this.c), e = len(mulM(perp(t.b), d)) / Math.max(0.1, len(d));
         if (e > 0.09) { t.bad++; mp.hits -= 2; if (mp.hits <= 0) { mp.alive = false; this.mapVersion++; } if (t.bad >= 3) { t.map = -1; t.obs = [{ c: [...this.c] as V3, b: t.b }]; } }
-        else if (e < 0.026) mp.hits = Math.min(60, mp.hits + 1);
+        else if (e < 0.026) {
+          mp.hits = Math.min(60, mp.hits + 1);
+          // Later measurements refine the point: a new view with a larger baseline re-triangulates it
+          const last = t.obs[t.obs.length - 1];
+          if (len(sub(this.c, last.c)) > 0.12) {
+            t.obs.push({ c: [...this.c] as V3, b: t.b });
+            if (t.obs.length > 10) t.obs.splice(1, 1);
+            if (t.obs.length >= 3) {
+              const X = this.triangulate(t.obs);
+              if (X && len(sub(X, mp.X)) < 0.6) {
+                mp.X = [mp.X[0] * 0.3 + X[0] * 0.7, mp.X[1] * 0.3 + X[1] * 0.7, mp.X[2] * 0.3 + X[2] * 0.7];
+                mp.sigma = this.sigmaOf(mp.X, t.obs); mp.nobs = t.obs.length; this.mapVersion++;
+              }
+            }
+          }
+        }
       } else {
         const last = t.obs[t.obs.length - 1];
         if (len(sub(this.c, last.c)) > 0.05) { t.obs.push({ c: [...this.c] as V3, b: t.b }); if (t.obs.length > 8) t.obs.splice(1, 1); }
         const f = t.obs[0], base = len(sub(this.c, f.c)), par = Math.acos(Math.min(1, dot(f.b, t.b))) / DEG;
         if (par > 2 && base > 0.08) {
           const X = this.triangulate(t.obs);
-          if (X && X[1] > this.floorY - 0.3) t.map = this.addPoint(X, t.color, 2);
+          if (X && X[1] > this.floorY - 0.3) t.map = this.addPoint(X, t.color, 2, this.sigmaOf(X, t.obs), t.obs.length);
         }
         if (t.map < 0 && t.age > 90) continue; // never became a point: replace
       }
